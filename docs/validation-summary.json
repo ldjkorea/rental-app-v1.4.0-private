@@ -1,0 +1,91 @@
+{
+  "version": "1.4.0",
+  "finishedAt": "2026-09-13T03:22:36.313Z",
+  "source": "C:\\Users\\c\\Documents\\Codex\\2026-09-12\\c-program-files-x86-microsoft-edge\\outputs\\rental-app",
+  "workingCopy": "C:\\Users\\c\\Documents\\Codex\\2026-09-13\\plugin-browser-openai-bundled-mention-tab-3\\outputs\\rental-app",
+  "inheritedFileCount": 29,
+  "originalUnchanged": true,
+  "preservedCoreFiles": [
+    "assets/core.js",
+    "assets/billing.js"
+  ],
+  "unitTests": {
+    "pass": 55,
+    "fail": 0,
+    "skip": 0
+  },
+  "browserScenarios": {
+    "browser": 20,
+    "audit": 17,
+    "pwa": 5
+  },
+  "v2": {
+    "status": "pass",
+    "checks": [
+      "isolated demo",
+      "exact costs",
+      "manual reconciliation",
+      "dated stamps",
+      "consistent message",
+      "draft recovery",
+      "search",
+      "csv",
+      "mobile layout",
+      "no runtime errors"
+    ]
+  },
+  "suite": {
+    "startedAt": "2026-09-13T03:21:57.267Z",
+    "finishedAt": "2026-09-13T03:22:36.313Z",
+    "url": "http://127.0.0.1:7584/",
+    "node": "v24.18.0",
+    "results": [
+      {
+        "suite": "browser.cjs",
+        "exitCode": 0,
+        "status": "pass"
+      },
+      {
+        "suite": "v2-browser.cjs",
+        "exitCode": 0,
+        "status": "pass"
+      },
+      {
+        "suite": "audit-browser.cjs",
+        "exitCode": 0,
+        "status": "pass"
+      },
+      {
+        "suite": "pwa-browser.cjs",
+        "exitCode": 0,
+        "status": "pass"
+      }
+    ]
+  },
+  "runtimeFilesSha256": {
+    "assets/app.js": "73359f36ca94c693542244b453e9cb743c0ed9ee35bf86f3153d49a4d6161827",
+    "assets/billing.js": "7583f3d95407a034a7fd695bd4b2801e7ae479be2c640c37d9f87de5a99048a6",
+    "assets/core.js": "e83f8307886d5e2695bb9774880d3ac46833000ded9bc9dffc9e9fb3ff47ff0e",
+    "assets/enhancements.js": "4211bff00237da0db0db113db1340c7c3cd9d4b41fe8f0f7913f3fb1b921c459",
+    "assets/styles.css": "f9f0d33c1dc3383fbeb25cc925f7d78dbbbb666a8abdf8915f0605c3faa605e6",
+    "assets/workspace.css": "00fc8001230a871cab4db87aa707d90e58243cbfec84ba9288961ea20ac11496",
+    "index.html": "4ee961f662ad62d0cc82189ff49b805e6053a6a0af034b75f9b996b17e54a859",
+    "scripts/serve.cjs": "3d499a50e358f16da79236bda2548fb43c7d19f5f8fe97e75cdd401b9ca4ea84",
+    "scripts/start.cjs": "63e0f56bc32241a1b7186c568ef4b74e9a543a32d2c9924c37905014522d3577",
+    "scripts/test-browser.cjs": "b4b6f5affdc0f6791a603792059c32d33acf2117e158bbf18dfd71456abbc108",
+    "start.ps1": "8b074c8dd013c22746b2d8eba138904639ca0a44129ef0f480b3d71ceae3205a",
+    "sw.js": "bb7d715ea238688c6e23744068f84f2b7f5dc5cb57ca92934245bbc0d68cf1a0",
+    "tests/audit-browser.cjs": "c2408d45caa9facc7344b9ecd210077abf6c8fb02d4aa87270a5a91bc16034d4",
+    "tests/audit.test.cjs": "01d5c74f287448f9e9276aca881cb329fb824c48b15f12e701035dd0665018da",
+    "tests/billing.test.cjs": "e951c7ca107345964fc4faf505d2748a87e218c3485e9f40a81c79e7b0c9f5e5",
+    "tests/browser.cjs": "dbbc627f14ff603fc4c64a3bcc867f19f96874281d2850fc176a7268c1471da0",
+    "tests/core.test.cjs": "9d5294e33b0cacbca34045568d0534df1e53ab1b39c3ab195bd64a035ee9a27e",
+    "tests/pwa-browser.cjs": "574444d09b4b4182b1b19fea9496fa192c181ba9bcc3a43346a394331e05e671",
+    "tests/server.test.cjs": "fe244f429ceca51b1a0c7888742b801b2e73ef615c93285bb19409640225924a",
+    "tests/sw.test.cjs": "c277cfa6623f11fb44267dd6d733c52965b0b36b71493231d659baeb620c855e",
+    "tests/v2-browser.cjs": "d17bd2243677b7da8e614510f05ae8aa0cbaf305d4847c5c529244953a92fe52",
+    "실행.cmd": "2e5ff827084c8c86dbf94041f457aa860ac33b91cd6e2a94facec898e2fae0ae"
+  },
+  "productionDeployed": false,
+  "liveGoogleBackendVerified": false
+}

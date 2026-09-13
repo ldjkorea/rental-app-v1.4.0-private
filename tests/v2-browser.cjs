@@ -1,0 +1,32 @@
+const TEST_URL=process.env.RENTAL_TEST_URL||'http://127.0.0.1:4173/';
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{
+ const executablePath=process.env.RENTAL_BROWSER||['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);
+ const browser=await chromium.launch(executablePath?{headless:true,executablePath}:{headless:true});
+ const context=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1050}}),page=await context.newPage(),errors=[],cloud=[];
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+ await context.route('**/*',r=>r.request().url().startsWith(TEST_URL)?r.continue():(cloud.push(r.request().url()),r.abort()));
+ await page.goto(TEST_URL+'?demo=1');await page.locator('#section-home.active').waitFor();
+ assert.equal(await page.locator('#home-bill-list .t-item').count(),4);assert.equal(await page.evaluate(()=>localStorage.getItem(RentalCore.STATE_KEY)),null);
+ await page.screenshot({path:'test-results/v2-desktop.png',fullPage:true});
+ await page.locator('#nav-settlement').click();await page.locator('#sett-elec').fill('115000');await page.locator('#sett-elev').fill('150001');await page.locator('#sett-waste').fill('100003');
+ await page.evaluate(()=>calcSettlement());assert.ok(await page.locator('#sett-note').innerText().then(t=>t.includes('일치')));
+ await page.screenshot({path:'test-results/v2-settlement.png',fullPage:true});
+ await page.evaluate(()=>adjustAllocation(1,'elev',50002));assert.equal(await page.locator('#confirm-settlement').isDisabled(),true);
+ await page.evaluate(()=>adjustAllocation(1,'elev',50001));assert.equal(await page.locator('#confirm-settlement').isDisabled(),false);
+ await page.evaluate(()=>confirmSettlement());assert.equal(await page.evaluate(()=>Object.values(bills[mk()]).reduce((s,b)=>s+(b.elevatorTotal||0),0)),150001);
+ await page.evaluate(()=>goToHistory('demo2'));await page.evaluate(()=>stampBill('rent'));await page.locator('#stamp-date').fill('2026-08-14');await page.evaluate(()=>saveStamp());
+ assert.equal(await page.evaluate(()=>bills[mk()].demo2.stampedRentDate),'2026.08.14');
+ await page.evaluate(()=>stampBill('mgmt'));await page.locator('#stamp-date').fill('2026-08-20');await page.evaluate(()=>saveStamp());
+ await page.evaluate(()=>previewKakao());const msg=await page.locator('#kakao-text').innerText();assert.ok(msg.includes('2026.08.20'));assert.ok(msg.includes('전액 입금'));assert.ok(!msg.includes('세금계산서 발급하였습니다'));
+ await page.evaluate(()=>closeModal('modal-receipt'));await page.screenshot({path:'test-results/v2-bill.png',fullPage:true});
+ await page.evaluate(()=>editThisMonth());await page.locator('#bill-electricity').fill('55555');await page.locator('#nav-home').click();await page.evaluate(()=>goToHistory('demo2'));await page.evaluate(()=>editThisMonth());assert.equal(await page.locator('#bill-electricity').inputValue(),'55555');
+ await page.evaluate(()=>saveBill());assert.equal(await page.evaluate(()=>Object.keys(readBillDrafts()).length),0);
+ await page.locator('#nav-tenants').click();await page.locator('#tenant-search').fill('온유');assert.equal(await page.locator('#tenant-list .t-item').count(),1);
+ const download=page.waitForEvent('download');await page.evaluate(()=>exportMonthCsv());const file=await download;assert.ok(file.suggestedFilename().endsWith('.csv'));
+ await page.setViewportSize({width:390,height:844});
+ for(const tab of ['home','tenants','history','settlement','settings']){await page.locator('#nav-'+tab).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),tab+' overflow');}
+ await page.locator('#nav-home').click();await page.screenshot({path:'test-results/v2-mobile.png',fullPage:true});
+ assert.deepEqual(errors,[]);assert.equal(cloud.filter(x=>x.includes('script.google')).length,0);
+ await browser.close();fs.writeFileSync('test-results/v2-results.json',JSON.stringify({status:'pass',checks:['isolated demo','exact costs','manual reconciliation','dated stamps','consistent message','draft recovery','search','csv','mobile layout','no runtime errors']}));console.log('PASS V2: demo, allocation, dates, messages, drafts, search, CSV, 5 mobile tabs');
+})().catch(e=>{console.error(e);process.exit(1)});

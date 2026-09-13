@@ -1,0 +1,16 @@
+{
+  "name": "rental-app",
+  "version": "1.4.0",
+  "private": true,
+  "description": "임대관리 앱 — 데이터 안정성 개선본",
+  "scripts": {
+    "start": "node scripts/serve.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check assets/core.js && node --check assets/billing.js && node --check assets/app.js && node --check assets/enhancements.js && node --check sw.js && node --check scripts/serve.cjs && node --check scripts/test-browser.cjs && node --check scripts/start.cjs",
+    "test:browser": "node scripts/test-browser.cjs",
+    "test:all": "npm run check && npm test && npm run test:browser"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
