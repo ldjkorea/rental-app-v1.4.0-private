@@ -39,3 +39,13 @@ Apps Script 프로젝트에는 `server/Code.gs`, `server/Billing.gs`, `server/Cu
 - 현재현황 문서 ID는 Script Property에 저장되어 이후 갱신이 파일명 검색에 의존하지 않는다.
 - 기존 소유자 전용 Sites 프로젝트에 프런트엔드 버전 3을 배포했다. 기존 HTTPS 주소와 접근 정책은 유지했다.
 - 배포 주소의 HTML과 서비스 워커를 다시 읽어 `현재현황 다시 생성`, 임대상태 선택지, 새 캐시 버전을 확인했다. 390×844 격리 브라우저에서는 HTTP 200, 예시 임차인 4개, 메뉴 5개, 콘솔 오류 0건을 확인했다.
+
+## 2차 건물 운영현황 운영 반영 결과
+
+- Git `main`을 2차 완료 커밋 `0ae23e1`로 fast-forward하고 원격에 푸시했다.
+- 운영 Apps Script에서 기존 `Billing`의 수동 현재현황 생성 함수와 `CurrentStatus`를 보존하고, `Code`의 선택적 `floorOperations` 검증만 반영했다.
+- 기존 웹 앱 배포 ID와 URL을 유지한 채 Apps Script 버전 5 `건물 운영현황 2차 개발_2026-09-17`로 갱신했다.
+- 기존 소유자 전용 Sites 프로젝트의 접근 정책과 HTTPS 주소를 유지한 채 버전 4를 배포했다. 배포 ID는 `appgdep_6aabbc26f2e8819180e608af898f4fc3`이며 최종 상태는 `succeeded`다.
+- Apps Script 연속 GET 두 번에서 상태 `ok`, 동일 revision, 동일 응답 SHA-256을 확인했다. 운영 DB POST와 migration은 실행하지 않았다.
+- 운영 Sites 390×844 격리 브라우저에서 임차인 4명을 GET으로 불러와 메뉴 6개, 1~5층 순서, 5층 `공실(정리중)`, 필터 무변경, 가로 넘침 없음과 콘솔 오류 0건을 확인했다.
+- 롤백 기준은 Git `backup/phase1-complete-20260917`, Apps Script 버전 4, Sites 버전 3이다.
