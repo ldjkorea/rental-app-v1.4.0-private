@@ -29,4 +29,11 @@ Apps Script 프로젝트에는 `server/Code.gs`, `server/Billing.gs`, `server/Cu
 4. 샘플 또는 사용자가 승인한 동일 데이터 조건부 저장으로 DB acknowledgement와 별도 `docs` 결과를 확인한다.
 5. Docs 실패를 모의해 DB 저장 성공이 유지되는지 확인하고, `현재현황 다시 생성`이 서버에 저장된 최신 DB만 사용하는지 확인한다.
 
-운영 배포, 실사용 DB POST, 실제 문서 생성은 로컬 테스트 및 변경 검토 이후 별도 단계로 수행한다.
+## 2026-09-17 운영 반영 결과
+
+- 기존 Apps Script 웹 앱 배포를 버전 4로 갱신했다. 웹 앱 URL, 실행 계정, 접근 범위는 유지했다.
+- 실제 GET에서 `rental-sync-v2`, SHA-256 revision, `conditionalWrite: true`, `currentStatus: true`를 확인했다.
+- Drive와 Docs 권한을 승인한 뒤 저장된 운영 DB만 사용하는 `regenerateCurrentStatus`를 두 차례 실행했다.
+- 두 실행 모두 같은 `임대관리_현재현황` 문서 ID를 반환했으며, 문서에는 BEGIN/END 표지 사이에 네 개 층별 세로형 섹션이 생성됐다.
+- 문서 재생성 전후 DB revision, 임차인 수, 월별 bills 원문이 같음을 확인했다. 이 검증에서는 운영 DB 저장을 실행하지 않았다.
+- 현재현황 문서 ID는 Script Property에 저장되어 이후 갱신이 파일명 검색에 의존하지 않는다.

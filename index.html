@@ -1289,7 +1289,7 @@ a {color:var(--gold);}
     const flag=key==='pay_rent'?'stampedRent':'stampedMgmt';
     if(!bill[flag])return;
     const state=payment(tenant,bill);
-    bill.paid??={};
+    if (bill.paid == null) bill.paid = {};
     for(const itemKey of itemKeys.filter(k=>(k==='pay_rent')===(key==='pay_rent'))) {
       const item=state.items[itemKey];
       // Preserve dated confirmations for unchanged items. Undated legacy groups require review.
@@ -1318,7 +1318,7 @@ a {color:var(--gold);}
     }
     if(bill.unitSnapshot==null){bill.unitSnapshot=tenant.unit||'';if(legacy)estimated.add('unit');}
     if(bill.paydaySnapshot==null){bill.paydaySnapshot=tenant.payday||'';if(legacy)estimated.add('payday');}
-    bill.tenantSnapshot??={};
+    if (bill.tenantSnapshot == null) bill.tenantSnapshot = {};
     for(const key of snapshotFields)if(!Object.hasOwn(bill.tenantSnapshot,key)) {
       bill.tenantSnapshot[key]=String(tenant[key]??'');if(legacy)estimated.add(key);
     }
