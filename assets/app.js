@@ -1460,39 +1460,314 @@ async function previewKakao(){
   if(document.getElementById('bill-total-display')){if(!validateNumbers('hist-content'))return;if(!captureBillDraft())return;if(!await save())return;clearBillDraft();}
   let t=findTenant(selTenantId);if(!t)return;
   const uy=activeY(),um=activeM();const key=`${uy}-${String(um).padStart(2,'0')}`;
-  const b=(bills[key]||{})[t.id]||{};const mm=String(um).padStart(2,'0');const lastDay=new Date(uy,um,0).getDate();
+  const b=(bills[key]||{})[t.id]||{};const mm=String(um).padStart(2,'0');
   t = billTenant(t, b);
-  const wh=(t.waterHistory||[]).filter(w=>w.mk<=key).slice(-4);
-  const wLines=wh.length?wh.map(w=>`\n${w.date} 수도계량기 : ${fmtN(w.val)}`).join(''):'';
-  const rent=Number(t.rent)||0,mgmt=Number(t.mgmt)||0,elev=RentalBilling.charges(t,b).pay_elev;
-  const elec=b.electricityNA?0:(Number(b.electricity)||0);
-  const water=b.waterNA?0:(Number(b.water)||0);
-  const waste=b.wasteNA?0:(Number(b.waste)||0);
-  let bLines='';
-  if(rent&&!b.paid?.pay_rent?.na)bLines+=`\n${um}월 월세 : ${fmtN(withVat(rent))}원`;
-  if(mgmt&&!b.paid?.pay_mgmt?.na){
-    bLines+=`\n${um}월 관리비 : ${fmtN(withVat(mgmt))}원`;
-    // 전체 항목을 번호 순서대로 출력 (미운영 포함)
-    if(t.mgmtItems?.length&&calcMgmtTotal(getMgmtItems(t))===mgmt)ALL_MGMT_ITEMS.forEach(def=>{
-      const x=getMgmtItems(t).find(i=>i.key===def.key)||{status:def.defaultStatus,amount:def.defaultAmt};
-      let amtStr;
-      if(x.status==='active') amtStr=x.amount>0?fmtN(x.amount)+'원':'0원';
-      else if(x.status==='actual') amtStr='실비정산';
-      else amtStr='미운영';
-      bLines+=`\n   ${def.no}. ${x.name||def.name} : ${amtStr}`;
-    });
+
+  // 날짜 관련 계산
+  const prevDate = new Date(uy, um - 2, 1);
+  const py = prevDate.getFullYear(), pm = prevDate.getMonth() + 1;
+  const nextDate = new Date(uy, um, 1);
+  const ny = nextDate.getFullYear(), nm = nextDate.getMonth() + 1;
+
+  // payday 파싱
+  const mMatch = (t.payday || '').match(/\d+/);
+  const pd = mMatch ? Number(mMatch[0]) : 1;
+
+  // 산정 기간: 월세/관리비/승강기
+  const prevMonthStr = String(pm).padStart(2, '0');
+  const thisMonthStr = mm;
+  const startDayStr = String(pd).padStart(2, '0');
+  let endY = uy, endM = um, endD = pd - 1;
+  if (endD === 0) {
+    const lastD = new Date(uy, um - 1, 0);
+    endY = lastD.getFullYear();
+    endM = lastD.getMonth() + 1;
+    endD = lastD.getDate();
   }
-  if(elec&&!b.paid?.pay_elec?.na)bLines+=`\n${um}월 공용전기세 : ${fmtN(withVat(elec))}원`;
-  if(elev&&!b.paid?.pay_elev?.na)bLines+=`\n${um}월 엘리베이터 운용비 : ${fmtN(elev)}원`;
-  if(water&&!b.paid?.pay_water?.na)bLines+=`\n${um}월 수도요금 : ${fmtN(water)}원`;
-  if(waste&&!b.paid?.pay_waste?.na)bLines+=`\n${um}월 오물처리비 : ${fmtN(waste)}원`;
-  const status=RentalBilling.payment(t,b);
-  const timing=RentalBilling.historicalPayment(t,b,uy,um,new Date());
-  const pLines=PAY_ITEMS.filter(item=>status.items[item.key].paid).map(item=>`\n${um}월 ${item.short} ${status.items[item.key].date} 입금 확인`).join('');
-  const uLine=timing.unknownDue>0?'\n납기 확인이 필요한 미입금액 : '+fmtN(timing.unknownDue)+'원':timing.overdue>0?`\n기한 경과 미입금 : ${fmtN(timing.overdue)}원 입금 부탁드립니다.`:timing.notDue>0?`\n지급기일 전 금액 : ${fmtN(timing.notDue)}원`:'\n전액 입금 확인되었습니다. 감사합니다.';
-  const rp=calcRenewPeriod(t.contract);
-  const naNotice='\n※ 미운영 항목은 현재 관리비에 포함되어 있지 않으며 비용을 부과하지 않습니다. 향후 건물 운영 여건, 법령 변경 또는 공용시설 운영 필요에 따라 해당 항목이 신설·운영될 수 있으며, 이 경우 관련 법령 및 임대차계약에 따라 사전에 안내 후 적용될 수 있습니다.';
-  const msg=`안녕하세요, [${t.biz||t.name}/${t.name}] 사장님.\n${uy}년도 ${mm}월 임대료와 관리비 내역을 안내드립니다.${b.invoiceIssued?' 세금계산서를 발급하였습니다.':''}\n기타 내용 전달드립니다. 확인후 입금해주세요~\n-------------------------\n최초 계약기간 : ${t.contract_first||''}\n현재 계약기간 : ${t.contract||''}\n계약서 갱신 가능 기간 : ${rp?rp.str:''}\n월납입 기준일 : ${t.payday||''} (${t.renew||''} / ${t.paytype||''})\n-------------------------\n※ 재계약 안내\n* 매 년 계약 종료 6개월 전 ~ 1개월 전 관리인이 직접 방문합니다.\n* 재계약서 작성 및 서명 후 임대인/임차인 각 1부씩 보관합니다.\n* 서명 방식과 대리 권한은 계약 당사자 간 확인 후 진행해주세요.${wLines?'\n-------------------------'+wLines:''}\n-------------------------${bLines}\n${naNotice}\n-------------------------${pLines}\n-------------------------${uLine}\n-------------------------`;
+  const rentPeriod = `${py}/${prevMonthStr}/${startDayStr} ~ ${endY}/${String(endM).padStart(2, '0')}/${String(endD).padStart(2, '0')}`;
+  const elecPeriod = `${py}/${prevMonthStr}/24 ~ ${uy}/${thisMonthStr}/23`;
+
+  // 금액 계산
+  const rentNet = Number(t.rent) || 0;
+  const rentVat = withVat(rentNet) - rentNet;
+  const rentTotal = rentNet + rentVat;
+
+  const mgmtNet = Number(t.mgmt) || 0;
+  const mgmtVat = withVat(mgmtNet) - mgmtNet;
+  const mgmtTotal = mgmtNet + mgmtVat;
+
+  const elecNet = b.electricityNA ? 0 : (Number(b.electricity) || 0);
+  const elecVat = withVat(elecNet) - elecNet;
+  const elecTotal = elecNet + elecVat;
+
+  const elevNet = b.paid?.pay_elev?.na ? 0 : (RentalBilling.charges(t, b).pay_elev || 0);
+  const elevVat = withVat(elevNet) - elevNet;
+  const elevTotal = elevNet + elevVat;
+
+  // 수도 관련 (홀수월 정산)
+  const waterTargetMonth = (um % 2 === 0) ? `${uy}-${String(um - 1).padStart(2, '0')}` : key;
+  const waterTargetM = (um % 2 === 0) ? (um - 1) : um;
+  const nextWaterM = (um % 2 === 0) ? (um + 1) : (um + 2);
+  const wb = (bills[waterTargetMonth] || {})[t.id] || {};
+  const waterAmt = Number(wb.water) || 0;
+
+  const waterPeriodMap = {
+    1: `${uy - 1}/10/21 ~ ${uy - 1}/12/20`,
+    3: `${uy - 1}/12/21 ~ ${uy}/02/20`,
+    5: `${uy}/02/21 ~ ${uy}/04/20`,
+    7: `${uy}/04/21 ~ ${uy}/06/20`,
+    9: `${uy}/06/21 ~ ${uy}/08/20`,
+    11: `${uy}/08/21 ~ ${uy}/10/20`
+  };
+
+  // 상태 판정
+  const isRentPaid = b.paid?.pay_rent?.paid || b.stampedRent;
+  const isMgmtPaid = b.paid?.pay_mgmt?.paid || b.stampedMgmt;
+  const isElecPaid = b.paid?.pay_elec?.paid;
+  const isElevPaid = b.paid?.pay_elev?.paid;
+  const isWaterPaid = wb.paid?.pay_water?.paid;
+
+  const rentStatus = isRentPaid ? '✅ 납부완료' : '[연체중]';
+  const mgmtStatus = isMgmtPaid ? '✅ 납부완료' : '[연체중]';
+  const elecStatus = isElecPaid ? '✅ 납부완료' : '[연체중]';
+  const elevStatus = isElevPaid ? '✅ 납부완료' : '[연체중]';
+  const waterStatus = isWaterPaid ? '✅ 납부완료' : '[연체중]';
+
+  // 입금 확인일
+  const rentPaidDate = b.paid?.pay_rent?.date || (b.stampedRentDate ? b.stampedRentDate : '');
+  const mgmtPaidDate = b.paid?.pay_mgmt?.date || (b.stampedMgmtDate ? b.stampedMgmtDate : '');
+
+  // 요청 금액 계산
+  let totalDue = 0;
+  const unpaidItems = [];
+  if (!isRentPaid && rentTotal > 0) { totalDue += rentTotal; unpaidItems.push(`${um}월 월세 ${fmtN(rentTotal)}원`); }
+  if (!isMgmtPaid && mgmtTotal > 0) { totalDue += mgmtTotal; unpaidItems.push(`${um}월 관리비 ${fmtN(mgmtTotal)}원`); }
+  if (!isElecPaid && elecTotal > 0) { totalDue += elecTotal; unpaidItems.push(`${um}월 공용전기료 ${fmtN(elecTotal)}원`); }
+  if (!isElevPaid && elevTotal > 0) { totalDue += elevTotal; unpaidItems.push(`${um}월 승강기 유지관리보수비 ${fmtN(elevTotal)}원`); }
+  if (!isWaterPaid && waterAmt > 0) { totalDue += waterAmt; unpaidItems.push(`${waterTargetM}월 수도요금 ${fmtN(waterAmt)}원`); }
+
+  // 재계약 기간
+  const rp = calcRenewPeriod(t.contract);
+
+  // 수도 정산 섹션 생성
+  const waterHistory = t.waterHistory || [];
+  const oddMonths = [3, 5, 7, 9].filter(m => m <= (um % 2 === 0 ? um + 1 : um));
+  const waterBlocks = oddMonths.map(m => {
+    const mk = `${uy}-${String(m).padStart(2, '0')}`;
+    const curW = waterHistory.find(w => w.mk === mk);
+    const mb = (bills[mk] || {})[t.id] || {};
+    const mAmt = Number(mb.water) || 0;
+    const isPaid = mb.paid?.pay_water?.paid;
+    const isFuture = m > um;
+
+    if (isFuture) {
+      return `[${m}월 수도]
+
+정산 대상 기간 : ${waterPeriodMap[m] || ''}
+주방 보조계량기 : ${curW ? fmtN(curW.val) : '정산 전'}
+배분 기준 증감값 : -
+정산 예정일 : ${uy}/${String(m).padStart(2, '0')}/30
+수도요금 : 상수도 정기고지 전
+상태 : 정산 예정
+
+※ 해당 기간 수도요금은 건물 전체 수도요금 확정 후 1층 사용분을 제외하고, 2~5층 주방 보조계량기 증감값을 기준으로 배분하여 실비 정산합니다.
+※ ${m}월 수도요금은 이번 입금 요청금액에 포함되지 않습니다.`;
+    }
+
+    return `[${m}월 수도]${isPaid ? '' : ' [연체중]'}
+
+정산 대상 기간 : ${waterPeriodMap[m] || ''}
+수도요금 : ${fmtN(mAmt)}원
+상태 : ${isPaid ? '✅ 납부완료' : '[연체중]'}`;
+  }).join('\n\n---\n\n');
+
+  // 관리비 세부 항목
+  let mgmtLines = '';
+  if (t.mgmtItems?.length && calcMgmtTotal(getMgmtItems(t)) === mgmtNet) {
+    ALL_MGMT_ITEMS.forEach(def => {
+      const x = getMgmtItems(t).find(i => i.key === def.key) || {status: def.defaultStatus, amount: def.defaultAmt};
+      let amtStr;
+      if (x.status === 'active') amtStr = x.amount > 0 ? fmtN(x.amount) + '원' : '0원';
+      else if (x.status === 'actual') amtStr = '실비정산';
+      else amtStr = '미운영';
+      mgmtLines += `\n${def.no}. ${x.name || def.name} : ${amtStr}`;
+    });
+  } else {
+    mgmtLines = `\n1-1. 건물 관리 운영비 : 60,000원\n1-2. 관리 행정 운영비 : 100,000원\n2-1. 청소 용역비 : 50,000원\n2-2. 건물 환경 관리비 : 20,000원\n3. 경비비 : 미운영\n4. 소독비 : 미운영\n5. 승강기 유지비 : ${elevTotal > 0 ? '별도 부과' : '미운영'}\n6. 냉난방비 및 급탕비 : 미운영\n7-1. 소방 안전 관리비 : 10,000원\n7-2. 시설 유지 관리비 : 60,000원\n7-3. 보안 방범 관리비 : 미운영\n7-4. 냉방 시설 청소비 : 미운영\n8. 위탁관리 수수료 : 미운영\n9. 전기료 : 별도 부과\n10. 수도료 : 별도 실비정산\n11. 가스 사용료 : 미운영\n12. 정화조 오물처리 수수료 : 실비정산\n13. 폐기물 처리 수수료 : 미운영\n14. 건물 보험료 : 미운영`;
+  }
+
+  const extraTotal = mgmtTotal + elecTotal + elevTotal;
+
+  const msg = `[알림] ${uy}년 ${um}월 관리내역 및 납부 현황 안내
+
+안녕하세요, [${t.biz || t.name}/${t.name}] 사장님.
+
+■ 간략 납부 현황
+
+${um}월 월세 (${rentPeriod})
+: ${fmtN(rentTotal)}원 ${rentStatus}
+
+${um}월 관리비 (${rentPeriod})
+: ${fmtN(mgmtTotal)}원 ${mgmtStatus}
+(공급가액 ${fmtN(mgmtNet)}원 + 부가세 ${fmtN(mgmtVat)}원)
+
+${um}월 공용전기료 (${elecPeriod})
+: ${fmtN(elecTotal)}원 ${elecStatus}
+(공급가액 ${fmtN(elecNet)}원 + 부가세 ${fmtN(elecVat)}원)
+
+${um}월 승강기 유지관리보수비 (${rentPeriod})
+: ${fmtN(elevTotal)}원 ${elevStatus}
+(공급가액 ${fmtN(elevNet)}원 + 부가세 ${fmtN(elevVat)}원)
+
+${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
+: ${fmtN(waterAmt)}원 ${waterStatus}
+
+현재 입금 요청금액 : ${fmtN(totalDue)}원
+
+※ ${nextWaterM}월 수도요금 (${waterPeriodMap[nextWaterM] || ''})은 정산 예정으로, 이번 입금 요청금액에 포함되지 않습니다.
+
+전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정이며, 관리내역 및 납부 현황 확인을 위해 카카오톡으로 먼저 고지드립니다.
+
+납부금액은 상단에 간략히 정리하였으며, 필요하신 경우 하단의 상세 내용을 확인해 주시기 바랍니다.
+
+---
+
+■ 계약 현황
+
+현재 계약 상태 : 정상 계약
+
+최초 계약 기간 : ${t.contract_first || ''}
+현재 계약 기간 : ${t.contract || ''}
+재계약 협의 예정 기간 : ${rp ? rp.str : ''}
+
+납입 기준일
+- 월세 : 매월 ${pd}일
+- 관리비 : 매월 말일 (관리인 고지 후)
+
+※ ${t.paytype || '후불납'}
+※ ${t.renew || '1년 단위 재계약'}
+
+---
+
+■ 재계약 안내
+
+- 계약 종료 6개월 전 ~ 1개월 전 사이에 임대인 또는 임대인으로부터 권한을 위임받은 관리인(대리인)이 재계약 관련 안내 및 협의를 진행합니다.
+- 재계약 시 계약 조건을 확인한 후 재계약서를 작성하며, 임대인·임차인 각 1부씩 보관합니다.
+- 임대인 또는 임차인이 직접 참석하지 않는 경우 적법하게 권한을 위임받은 대리인을 통해 계약을 진행할 수 있습니다.
+- 대리인이 계약을 진행하는 경우 위임관계를 확인 후 계약서를 작성합니다.
+
+---
+
+■ 수도요금 정산 현황
+
+※ 2~5층 주방에 설치된 계량기는 각 층의 실제 수도요금을 직접 산출하는 계량기가 아니라, 층별 수도요금 배분을 위한 보조계량기입니다.
+
+※ 건물 전체 수도요금에서 별도 산정되는 1층 사용분을 제외한 후, 나머지 2~5층 수도요금을 각 층 주방 보조계량기의 검침 증감값을 기준으로 비율 배분하여 실비 정산합니다.
+
+※ 아래 보조계량기의 증감값은 해당 층의 실제 수도 사용량(㎥)을 직접 의미하지 않으며, 수도요금 배분을 위한 기준값으로 사용됩니다.
+
+※ 수도요금은 상수도 정기고지 일정에 따라 2개월 단위로 정산합니다.
+
+---
+
+${waterBlocks}
+
+---
+
+■ ${um}월 월세
+
+산정 기간 : ${rentPeriod}
+
+월세 : ${fmtN(rentTotal)}원
+상태 : ${rentStatus}${rentPaidDate ? ` (${rentPaidDate} 입금 확인)` : ''}
+
+---
+
+■ ${um}월 관리비
+
+산정 기간 : ${rentPeriod}
+
+공급가액 : ${fmtN(mgmtNet)}원
+부가세 : ${fmtN(mgmtVat)}원
+합계 : ${fmtN(mgmtTotal)}원
+${mgmtLines}
+
+상태 : ${mgmtStatus}
+
+---
+
+■ ${um}월 별도 부과항목
+
+[공용전기료]
+
+산정 기간 : ${elecPeriod}
+
+공급가액 : ${fmtN(elecNet)}원
+부가세 : ${fmtN(elecVat)}원
+합계 : ${fmtN(elecTotal)}원
+상태 : ${elecStatus}
+
+---
+
+[승강기 유지관리보수비]
+
+산정 기간 : ${rentPeriod}
+
+공급가액 : ${fmtN(elevNet)}원
+부가세 : ${fmtN(elevVat)}원
+합계 : ${fmtN(elevTotal)}원
+상태 : ${elevStatus}
+
+---
+
+■ ${um}월 관리비 및 별도 부과항목 합계
+
+관리비 : ${fmtN(mgmtTotal)}원
+공용전기료 : ${fmtN(elecTotal)}원
+승강기 유지관리보수비 : ${fmtN(elevTotal)}원
+
+합계 : ${fmtN(extraTotal)}원
+상태 : ${mgmtStatus}${mgmtPaidDate ? ` (${mgmtPaidDate} 입금 확인)` : ''}
+
+※ 미운영 항목은 현재 관리비에 포함되어 있지 않으며 비용을 부과하지 않습니다.
+
+향후 건물 운영 여건, 법령 변경 또는 공용시설 운영 필요에 따라 해당 항목이 신설·운영될 수 있으며, 이 경우 관련 법령 및 임대차계약에 따라 사전에 안내 후 적용될 수 있습니다.
+
+---
+
+■ 현재 납부 현황
+
+${um}월 월세 (${rentPeriod})
+: ${fmtN(rentTotal)}원 ${rentStatus}
+
+${um}월 관리비 (${rentPeriod})
+: ${fmtN(mgmtTotal)}원 ${mgmtStatus}
+(공급가액 ${fmtN(mgmtNet)}원 + 부가세 ${fmtN(mgmtVat)}원)
+
+${um}월 공용전기료 (${elecPeriod})
+: ${fmtN(elecTotal)}원 ${elecStatus}
+(공급가액 ${fmtN(elecNet)}원 + 부가세 ${fmtN(elecVat)}원)
+
+${um}월 승강기 유지관리보수비 (${rentPeriod})
+: ${fmtN(elevTotal)}원 ${elevStatus}
+(공급가액 ${fmtN(elevNet)}원 + 부가세 ${fmtN(elevVat)}원)
+
+${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
+: ${fmtN(waterAmt)}원 ${waterStatus}
+
+${nextWaterM}월 수도요금 (${waterPeriodMap[nextWaterM] || ''})
+: 정산 예정 / 이번 입금 요청금액에 미포함
+
+현재 입금 요청금액 : ${fmtN(totalDue)}원
+
+전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정입니다.
+
+${totalDue > 0 ? `기존 미입금된 ${unpaidItems.join(', ')} 확인 후 입금 부탁드립니다.` : '전액 입금 확인되었습니다. 감사합니다.'}
+
+감사합니다.
+
+다인빌딩 관리인`;
+
   document.getElementById('kakao-msg-wrap').innerHTML=`<div class="kakao-box" id="kakao-text">${msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
   openModal('modal-receipt');
 }
@@ -1501,6 +1776,7 @@ async function copyKakao() {
   try { await navigator.clipboard.writeText(el.innerText); showToast('복사됐어요! 카카오톡에 붙여넣기 📋'); }
   catch { showToast('자동 복사를 사용할 수 없습니다. 메시지 내용을 선택해서 복사해주세요.'); }
 }
+
 async function saveWaterRatio() {
   if (!validateNumbers('section-settings')) return;
   const values = ['wr2', 'wr3', 'wr4'].map(id => document.getElementById(id).value);
@@ -1659,7 +1935,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   updateLiveDate();
   setInterval(updateLiveDate, 60000);
 });
-if('serviceWorker'in navigator && (location.protocol==='https:'||['localhost','127.0.0.1'].includes(location.hostname))) {
+// PWA metadata and worker are optional; local files need neither URL.
+if(location.protocol==='http:' || location.protocol==='https:') {
+  const manifest=document.createElement('link');
+  manifest.rel='manifest';manifest.href='./manifest.json';document.head.appendChild(manifest);
+}
+if('serviceWorker'in navigator && (location.protocol==='https:'||(location.protocol==='http:'&&['localhost','127.0.0.1'].includes(location.hostname)))) {
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>{
       const notice=()=>{const el=document.getElementById('app-update-notice');if(el){el.hidden=false;el.textContent='새 버전이 준비됐습니다. 작업을 저장하고 이 앱의 모든 창을 닫은 뒤 다시 열면 적용됩니다.';}};

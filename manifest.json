@@ -1,18 +1,33 @@
 {
-  "name": "Property Management",
-  "short_name": "PM",
-  "description": "임대료 고지서 및 세입자 관리 앱",
-  "start_url": "./index.html",
+  "name": "임대관리 1.4",
+  "short_name": "임대관리 1.4",
+  "description": "임대관리 1.4.0 — 고지서·납부·정산·백업 관리",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "id": "./index.html",
+  "scope": "./",
+  "lang": "ko"
 }

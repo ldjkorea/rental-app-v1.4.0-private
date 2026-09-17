@@ -1,0 +1,65 @@
+/* Shared DOM, mobile presentation only. Desktop workspace rules stay intact. */
+@media screen and (max-width: 800px) {
+  :root { --mobile-nav-height: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  html { scroll-padding-bottom: calc(var(--mobile-nav-height) + 20px); }
+  body { height:auto; min-height:100%; padding:0 0 calc(var(--mobile-nav-height) + 24px); }
+  .workspace-sidebar {
+    height:var(--mobile-nav-height);
+    padding:8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    box-shadow:0 -4px 20px #1c352e0a;
+  }
+  .pill-nav, .pill-nav.pill-bottom { height:100%; }
+  .pill-item { min-width:0; min-height:52px; gap:5px; }
+  .pill-item svg { width:21px; height:21px; }
+  .pill-item .pi-label { font-size:11px; color:inherit; text-shadow:none; }
+  .pill-item.active .pi-label, .pill-item:hover:not(.active) .pi-label { color:inherit; text-shadow:none; }
+  .header { flex-direction:column; align-items:stretch; gap:12px; padding:20px 16px 16px; }
+  .heading-copy h1 { font-size:24px; margin:2px 0; }
+  .heading-copy .eyebrow { font-size:9px; }
+  .heading-copy p { font-size:12px; }
+  .header-tools { max-width:none; justify-content:space-between; gap:8px; }
+  .month-nav { flex:1 0 200px; min-width:200px; max-width:none; justify-content:space-between; }
+  .mnav-label { font-size:14px!important; }
+  .sync-dot { width:auto; flex:1 1 90px; font-size:11px; overflow-wrap:anywhere; }
+  .content { padding:0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); }
+  .section, .card, .field, .t-info, .metric-card, .payment-card { min-width:0; }
+  .card { padding:16px; border-radius:16px; }
+  .card-header { flex-wrap:wrap; gap:10px; }
+  .card-title { font-size:15px; }
+  .card-sub, .hint-box { font-size:12px; }
+  .dashboard-intro { padding:20px; margin-bottom:16px; }
+  .dashboard-intro h2 { font-size:23px; }
+  .dashboard-intro p { font-size:12px; }
+  .metrics-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .metric-card { padding:14px 12px; }
+  .metric-card>strong { font-size:21px; overflow-wrap:anywhere; }
+  .metric-card>small { font-size:11px; }
+  .t-item { flex-wrap:wrap; gap:10px; padding:16px 8px; }
+  .t-name { font-size:14px; }
+  .t-unit { font-size:12px; }
+  .t-amount { margin-left:auto; overflow-wrap:anywhere; }
+  button, .btn, .btn-add, .btn-sett, .chip { min-height:44px; }
+  .mnav-btn, .modal-close, #hist-nav button { min-width:44px; min-height:44px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea,
+  .field input, .field select, .section-toolbar input, .allocation-input {
+    min-height:44px; min-width:0; max-width:100%; font-size:16px;
+  }
+  .field-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .field label { font-size:12px; }
+  .chip-row { max-width:100%; padding-bottom:8px; }
+  .bill-actions { display:grid; grid-template-columns:1fr; }
+  .bill-actions .btn { min-width:0; font-size:14px; }
+  .payment-card { padding:16px; }
+  .payment-heading, .payment-date, .invoice-check { font-size:13px; }
+  .invoice-check { min-height:44px; }
+  .modal { max-height:90dvh; padding-bottom:calc(22px + env(safe-area-inset-bottom)); }
+  .toast { bottom:calc(var(--mobile-nav-height) + 12px); }
+  #sett-step2 { overflow:visible; }
+  .result-tbl { min-width:600px; }
+  .data-notice, .reconcile, .reconcile-details { overflow-wrap:anywhere; }
+  .step-row { padding:16px 12px; }
+}
+@media screen and (max-width: 420px) {
+  .field-row { grid-template-columns:1fr; }
+  .charge-row { grid-template-columns:minmax(0,1fr) minmax(90px,auto); }
+}

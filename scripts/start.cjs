@@ -24,6 +24,7 @@ async function openApp(){
 (async()=>{
   if(Number(process.versions.node.split('.')[0])<20)throw new Error('Node.js 20 이상이 필요합니다.');
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('RENTAL_PORT는 1~65535 정수여야 합니다.');
+  fs.writeFileSync(path.join(root,'index.html'),require('./build.cjs').build());
   if(!await probe()){
     const server=spawn(process.execPath,[path.join(__dirname,'serve.cjs')],{cwd:root,env:{...process.env,RENTAL_PORT:String(port)},windowsHide:true,detached:true,stdio:'ignore'});
     await new Promise((resolve,reject)=>{server.once('spawn',resolve);server.once('error',reject);});

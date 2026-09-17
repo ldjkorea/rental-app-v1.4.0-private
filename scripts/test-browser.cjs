@@ -3,7 +3,7 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results');
-const suites=['browser.cjs','v2-browser.cjs','audit-browser.cjs','pwa-browser.cjs'];
+const suites=['browser.cjs','v2-browser.cjs','audit-browser.cjs','pwa-browser.cjs','single-file-browser.cjs'];
 let server,serverExited;
 function run(file,env){
   return new Promise(resolve=>{

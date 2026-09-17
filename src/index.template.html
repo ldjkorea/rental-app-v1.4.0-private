@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>임대관리 · Property Management</title>
+
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PM">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+
+
+<!-- PC: 화면 중앙 정렬, 최대 640px -->
+
+
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/workspace.css">
+<link rel="stylesheet" href="assets/mobile.css">
+<script src="assets/core.js" defer></script>
+<script src="assets/billing.js" defer></script>
+<script src="assets/app.js" defer></script>
+<script src="assets/enhancements.js" defer></script>
+</head>
+<body>
+
+<header class="header" id="main-header">
+  <div class="heading-copy"><span class="eyebrow">PROPERTY MANAGEMENT</span><h1 id="page-title">이번 달 한눈에</h1><p id="live-date-main"></p></div>
+  <div class="header-tools"><div class="month-nav"><button class="mnav-btn" aria-label="이전 달" onclick="changeMonth(-1)">‹</button><button class="mnav-label" id="currentMonth" onclick="openMonthPicker()"></button><button class="mnav-btn" aria-label="다음 달" onclick="changeMonth(1)">›</button></div><button class="today-button" onclick="quickPick(new Date().getFullYear(),new Date().getMonth()+1)">이번 달</button><span id="sync-dot" class="sync-dot" role="status" aria-live="polite"></span></div>
+</header>
+<!-- ── 콘텐츠 ── -->
+<div class="content">
+<div id="data-notice" class="data-notice" role="alert" hidden></div>
+<div id="app-update-notice" class="data-notice" role="status" aria-live="polite" hidden></div>
+
+  <!-- ======= 홈 탭 ======= -->
+  <div id="section-home" class="section">
+<div id="demo-banner" class="demo-banner" hidden>예시 데이터로 둘러보는 중입니다. 실제 자료와 별도로 저장되며 구글 연결은 사용하지 않습니다. <a href="index.html">내 데이터로 돌아가기</a></div>
+<div id="onboarding"></div>
+<div class="dashboard-intro"><div><span class="eyebrow">YOUR PROPERTY, AT A GLANCE</span><h2>한 달의 흐름을 한눈에.</h2><p>청구부터 입금 확인까지, 필요한 일에 집중하세요.</p></div><button class="btn btn-primary" onclick="switchTab('settlement')">이번 달 정산 →</button></div>
+<div id="dashboard-metrics" class="metrics-grid"></div>
+
+    <!-- 이달 상태 알림 -->
+    <div id="home-alerts"></div>
+    <div id="home-sett-status" style="margin-bottom:10px;"></div>
+
+    <!-- 이달 현황 카드 -->
+    <div class="month-banner">
+      <div class="month-banner-left">
+        <div class="label">이번 달</div>
+        <div class="title" id="home-month-title">2026년 3월</div>
+      </div>
+      <div class="month-banner-right">
+        <div class="sub">총 청구액</div>
+        <!-- 민감정보 토글 -->
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+          <div class="val" id="home-total-wrap">
+            <span id="home-total" class="blur-it">₩0</span>
+          </div>
+          <button class="reveal-btn" id="reveal-btn" aria-label="총 청구액 표시 전환" onclick="toggleSensitive()">
+            <span id="reveal-icon">👁</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 정산 바로가기 -->
+    <button class="btn-sett" onclick="switchTab('settlement')">📊 이달 정산 입력하기</button>
+
+    <!-- 세입자별 현황 -->
+    <div class="card" style="margin-top:10px;">
+      <div class="card-header">
+        <div><div class="card-title">세입자별 입금 현황</div><button class="text-button" onclick="exportMonthCsv()">월별 내역 내보내기 ↗</button></div>
+      </div>
+      <div id="home-bill-list">
+        <div class="empty"><div class="empty-icon">📋</div><div style="font-size:13px;">세입자를 추가해보세요</div></div>
+      </div>
+    </div>
+
+    <!-- 재계약 체크리스트 -->
+    <div class="card" id="renewal-card" style="display:none;">
+      <div class="card-header"><div><div class="card-title">📋 재계약 체크리스트</div></div></div>
+      <div id="renewal-list"></div>
+    </div>
+
+    <!-- 대출 현황 -->
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">🏦 담보 대출</div></div>
+        <button onclick="openAddLoan()" style="background:var(--goldbg2);border:1px solid rgba(201,168,76,.4);color:var(--gold);padding:5px 11px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 추가</button>
+      </div>
+      <div id="loan-list"></div>
+      <div id="loan-summary" style="display:none;margin-top:10px;padding:10px 12px;background:var(--redbg);border:1px solid rgba(192,57,43,.2);border-radius:8px;">
+        <div style="font-size:10px;color:var(--text2);letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px;">이달 이자 합계</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;color:var(--red);" id="loan-total">₩0</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:3px;" id="loan-breakdown"></div>
+      </div>
+    </div>
+
+    <!-- 지출 -->
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">🔧 유지·수선 지출</div></div>
+        <button onclick="openAddExpense()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:5px 11px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 추가</button>
+      </div>
+      <div id="expense-list"></div>
+      <div id="expense-total-wrap" style="display:none;padding:9px 12px;background:var(--surface2);border-radius:8px;margin-top:8px;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:var(--text2);">이달 지출 합계</span>
+        <span style="font-family:'DM Mono',monospace;font-size:14px;color:var(--red);font-weight:700;" id="expense-total">₩0</span>
+      </div>
+    </div>
+
+  </div><!-- /home -->
+
+  <!-- ======= 고지서 탭 ======= -->
+  <div id="section-history" class="section">
+    <div class="section-label">세입자 선택</div>
+    <div class="chip-row" id="hist-chips"></div>
+    <div style="display:none;align-items:center;justify-content:space-between;margin-bottom:14px;" id="hist-nav">
+      <button onclick="historyChangeMonth(-1)" style="background:var(--surface2);border:1px solid var(--border2);color:var(--gold);width:36px;height:36px;border-radius:10px;font-size:18px;cursor:pointer;">‹</button>
+      <span id="hist-month-lbl" style="font-size:14px;font-weight:700;color:var(--text);"></span>
+      <button onclick="historyChangeMonth(1)" style="background:var(--surface2);border:1px solid var(--border2);color:var(--gold);width:36px;height:36px;border-radius:10px;font-size:18px;cursor:pointer;">›</button>
+    </div>
+    <div id="hist-content">
+      <div class="empty"><div class="empty-icon">👆</div><div style="font-size:13px;">위에서 세입자를 선택하세요</div></div>
+    </div>
+  </div><!-- /history -->
+
+  <!-- ======= 세입자 탭 ======= -->
+  <div id="section-tenants" class="section"><div class="section-toolbar"><div><h2>세입자 목록</h2><p>상호 · 이름 · 호수로 빠르게 찾으세요.</p></div><input type="search" id="tenant-search" aria-label="세입자 검색" placeholder="세입자 검색" oninput="renderTenants()"></div>
+    <div id="tenant-list"></div>
+    <button class="btn-add" onclick="openAddTenant()">＋ 세입자 추가</button>
+  </div>
+
+  <section id="section-settlement" class="section"><div id="settings-sett-embed"></div></section>
+  <!-- ======= 설정 탭 (정산 포함) ======= -->
+  <div id="section-settings" class="section">
+
+    <!-- 정산 (설정 탭 상단 배치) -->
+
+
+    <div class="divider" style="margin:16px 0;"></div>
+
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">💧 수도 배분 비율</div><div class="card-sub">2층 : 3층 : 4층</div></div></div>
+      <div class="field-row">
+        <div class="field"><label>2층</label><input type="number" id="wr2" placeholder="19"></div>
+        <div class="field"><label>3층</label><input type="number" id="wr3" placeholder="10"></div>
+        <div class="field"><label>4층</label><input type="number" id="wr4" placeholder="5"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveWaterRatio()">💾 저장</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">☁️ 구글 드라이브 동기화</div><div class="card-sub" id="sync-status-detail">이 기기에 저장</div></div></div>
+      <div class="hint-box">변경 내용은 이 기기에 먼저 저장합니다. 구글 업로드는 서버가 버전 비교 저장을 지원할 때만 가능합니다. 기존 서버의 불러오기는 사용할 수 있습니다. 백업 복원·초기화 후에는 구글 자료를 대조하고 수동 저장해야 합니다.</div>
+      <label class="sync-toggle"><input type="checkbox" id="cloud-enabled" onchange="setCloudEnabled(this.checked)"> 구글 자동 동기화</label>
+      <button class="btn btn-primary" style="margin-top:10px;" onclick="manualSync()">☁️ 구글에 지금 저장</button>
+      <button class="btn btn-secondary" onclick="syncFromSheet()">📥 구글 드라이브에서 불러오기</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">📤 백업 / 복원</div></div></div>
+      <button class="btn btn-secondary" onclick="exportData()">📤 파일로 내보내기</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">📥 파일 가져오기</button>
+      <button class="btn btn-secondary" onclick="restoreRecovery()">↩ 직전 복원 지점으로 되돌리기</button>
+      <p class="card-sub">가져오기·초기화·주요 삭제 전 자료를 1개 보관합니다. 장기 보관은 파일 내보내기를 사용하세요.</p>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">🗑️ 데이터 초기화</div></div></div>
+      <button class="btn btn-secondary" onclick="resetAllData()" style="color:var(--red);border-color:var(--red);">전체 초기화</button>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<aside class="workspace-sidebar"><a href="index.html" class="workspace-brand"><span class="brand-mark">P<span>·</span></span><span>Property<small>임대관리 워크스페이스</small></span></a><span class="nav-caption">WORKSPACE</span><nav class="pill-nav" aria-label="주요 메뉴"><button type="button" class="pill-item" id="nav-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="pi-label">대시보드</span></button><button type="button" class="pill-item" id="nav-tenants" onclick="switchTab('tenants')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0112 0v3M16 4a3 3 0 010 6M18 14a5 5 0 013 4v3"/></svg><span class="pi-label">세입자</span></button><button type="button" class="pill-item" id="nav-history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg><span class="pi-label">고지서</span></button><button type="button" class="pill-item" id="nav-settlement" onclick="switchTab('settlement')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/></svg><span class="pi-label">정산</span></button><button type="button" class="pill-item" id="nav-settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span class="pi-label">설정</span></button></nav><div class="sidebar-bottom"><span class="live-dot"></span> 나의 임대관리 공간<small>정산과 기록을 더 간결하게.</small><span class="version-label">VERSION 1.4.0</span></div></aside>
+<!-- ══ 모달들 ══ -->
+<!-- 세입자 추가/수정 -->
+<div class="modal-overlay" id="modal-tenant">
+  <div class="modal">
+    <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-tenant')">✕</button>
+    <div class="modal-title" id="modal-tenant-title">세입자 추가</div>
+    <div class="section-label">기본 정보</div>
+    <div class="field-row">
+      <div class="field"><label>이름</label><input type="text" id="inp-name" placeholder="홍길동"></div>
+      <div class="field"><label>상호명</label><input type="text" id="inp-biz" placeholder="상호명"></div>
+    </div>
+    <div class="field"><label>호수</label><input type="text" id="inp-unit" placeholder="101호"></div>
+    <div class="divider"></div>
+    <div class="section-label">계약 정보</div>
+    <div class="field"><label>최초 계약기간</label><input type="text" id="inp-contract-first" placeholder="2016/10/20 ~ 2017/10/19"></div>
+    <div class="field"><label>현재 계약기간</label><input type="text" id="inp-contract" placeholder="2025/10/20 ~ 2026/10/19" oninput="updateRenewPreview()"></div>
+    <div class="field" id="renew-preview-wrap" style="display:none;">
+      <label>갱신 가능 기간 (자동)</label>
+      <div id="renew-preview" style="padding:9px 12px;background:var(--goldbg);border-radius:8px;font-size:13px;color:var(--gold);font-family:'DM Mono',monospace;"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>월납입 기준일</label><input type="text" id="inp-payday" placeholder="매월 15일"></div>
+      <div class="field"><label>납부방식</label><select id="inp-paytype"><option value="후불납">후불납</option><option value="선불납">선불납</option></select></div>
+    </div>
+    <div class="field"><label>재계약 단위</label><input type="text" id="inp-renew" placeholder="1년단위 재계약"></div>
+    <div class="divider"></div>
+    <div class="section-label">월 고정 금액</div>
+    <div class="field">
+      <label>월세 (원)</label>
+      <input type="number" id="inp-rent" placeholder="500000">
+    </div>
+    <div class="divider"></div>
+    <div class="section-label">📋 관리비 세부 항목 (2026.05.12 공개 기준)</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.6;">
+      각 항목을 <strong style="color:var(--green);">운영중</strong>(고정금액) / <strong style="color:var(--gold2);">실비정산</strong>(사용량 기준) / <strong style="color:var(--text2);">미운영</strong> 중 선택하세요
+    </div>
+    <div id="mgmt-items-wrap"></div>
+    <!-- 합계 -->
+    <div style="padding:11px 14px;background:var(--goldbg);border:1px solid rgba(201,168,76,.25);border-radius:var(--r2);display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+      <span style="font-size:12px;color:var(--text2);">관리비 합계 (VAT 별도)</span>
+      <span id="mgmt-total-preview" style="font-family:'DM Mono',monospace;font-size:15px;color:var(--gold);font-weight:700;">₩0</span>
+    </div>
+    <div class="field"><label>엘리베이터 운용비 (원, VAT제외)</label><input type="number" id="inp-elevator" placeholder="0 입력 시 미부과"><div style="font-size:10px;color:var(--text2);margin-top:4px;">※ 1층 세입자는 입력값과 무관하게 자동으로 제외됩니다</div></div>
+    <div class="divider"></div>
+    <div class="section-label">공용전기세 배분</div>
+    <div class="field"><label>배분 방식</label><select id="inp-elec-type" onchange="toggleElecFixed()"><option value="none">해당없음</option><option value="fixed">고정금액</option><option value="remain">나머지 자동</option></select></div>
+    <div class="field" id="elec-fixed-wrap" style="display:none;"><label>고정 공급가 (원)</label><input type="number" id="inp-elec-fixed" placeholder="35000" oninput="updateElecPreview()"><div class="vat-hint">청구액: <span id="elec-preview">₩0</span> (VAT포함)</div></div>
+    <div class="divider"></div>
+    <div class="section-label">납부확인 기간 자동설정</div>
+    <div class="field-row">
+      <div class="field"><label>관리비 시작일</label><input type="number" id="inp-pm" placeholder="15"></div>
+      <div class="field"><label>월세 시작일</label><input type="number" id="inp-pr" placeholder="15"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>전기세 시작일</label><input type="number" id="inp-pe" placeholder="24"></div>
+      <div class="field"><label>엘베 시작일</label><input type="number" id="inp-pev" placeholder="15"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>오물 시작일</label><input type="number" id="inp-pw" placeholder="15"></div>
+      <div class="field"></div>
+    </div>
+    <div class="section-label">수도요금 자동설정</div>
+    <div class="field-row">
+      <div class="field"><label>수도 계량일</label><input type="number" id="inp-wd" placeholder="21"></div>
+      <div class="field"><label>부과월</label><select id="inp-wo"><option value="">선택</option><option value="odd">홀수달</option><option value="even">짝수달</option></select></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveTenant()" style="margin-top:8px;">저장</button>
+  </div>
+</div>
+
+<!-- 대출 모달 -->
+<div class="modal-overlay" id="modal-loan">
+  <div class="modal">
+    <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-loan')">✕</button>
+    <div class="modal-title" id="modal-loan-title">대출 추가</div>
+    <div class="field"><label>대출명 / 은행</label><input type="text" id="inp-loan-name" placeholder="국민은행 담보대출"></div>
+    <div class="field"><label>원금 (원)</label><input type="number" id="inp-loan-principal" placeholder="500000000" oninput="calcLoanPrev()"></div>
+    <div class="field"><label>연 이자율 (%)</label><input type="number" id="inp-loan-rate" placeholder="4.5" step="0.01" oninput="calcLoanPrev()"></div>
+    <div id="loan-prev" style="display:none;padding:10px 12px;background:var(--goldbg);border-radius:8px;margin-bottom:12px;">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:3px;">월 이자</div>
+      <div style="font-family:'DM Mono',monospace;font-size:18px;color:var(--gold);" id="loan-prev-amt">₩0</div>
+    </div>
+    <div class="field"><label>만기일</label><input type="text" id="inp-loan-maturity" placeholder="2028/10/20"></div>
+    <button class="btn btn-primary" onclick="saveLoan()">저장</button>
+  </div>
+</div>
+
+<!-- 지출 모달 -->
+<div class="modal-overlay" id="modal-expense">
+  <div class="modal">
+    <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-expense')">✕</button>
+    <div class="modal-title" id="modal-expense-title">지출 추가</div>
+    <div class="field"><label>항목명</label><input type="text" id="inp-exp-name" placeholder="오수관 정비공사"></div>
+    <div class="field"><label>금액 (원)</label><input type="number" id="inp-exp-amount" placeholder="1500000"></div>
+    <div class="field"><label>날짜</label><input type="text" id="inp-exp-date"></div>
+    <div class="field"><label>비고</label><input type="text" id="inp-exp-memo" placeholder="업체명, 영수증 번호 등"></div>
+    <button class="btn btn-primary" onclick="saveExpense()">저장</button>
+  </div>
+</div>
+
+<!-- 카카오 모달 -->
+<div class="modal-overlay" id="modal-receipt">
+  <div class="modal">
+    <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-receipt')">✕</button>
+    <div class="modal-title">💬 카카오톡 메시지</div>
+    <div id="kakao-msg-wrap"></div>
+    <button class="btn btn-green" onclick="copyKakao()">📋 복사하기</button>
+    <button class="btn btn-secondary" onclick="closeModal('modal-receipt')">닫기</button>
+  </div>
+</div>
+
+<!-- 월 피커 -->
+<div class="modal-overlay" id="modal-month">
+  <div class="modal">
+    <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-month')">✕</button>
+    <div class="modal-title">📅 월 선택</div>
+    <div class="field-row">
+      <div class="field"><label>연도</label><input type="number" id="pick-y" min="2020" max="2040"></div>
+      <div class="field"><label>월</label><select id="pick-m">
+        <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
+        <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
+        <option value="7">7월</option><option value="8">8월</option><option value="9">9월</option>
+        <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+      </select></div>
+    </div>
+    <div class="section-label">빠른 선택</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;" id="quick-chips"></div>
+    <button class="btn btn-primary" onclick="applyMonthPicker()">이동</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-stamp"><div class="modal stamp-modal"><button class="modal-close" aria-label="닫기" onclick="closeModal('modal-stamp')">×</button><div class="modal-title" id="stamp-title">완납 날짜</div><p class="card-sub">실제 입금일을 선택하세요. 과거 날짜로 변경할 수 있습니다.</p><div class="field"><label for="stamp-date">완납 처리일</label><input type="date" id="stamp-date" required></div><button class="btn btn-primary" onclick="saveStamp()">이 날짜로 완납 저장</button><button class="btn btn-secondary" id="stamp-remove" onclick="saveStamp(true)">완납 처리 취소</button></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+</body>
+</html>
