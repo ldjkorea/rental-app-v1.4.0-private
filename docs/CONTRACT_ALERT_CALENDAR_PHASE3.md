@@ -49,3 +49,5 @@ tenant ID와 Google Calendar event ID의 연결은 Script Properties의 `RENTAL_
 - `[임대관리] 4층 문 바 노원점 계약 만료` — 2027-02-09
 
 같은 DB로 두 번째 동기화를 실행한 결과 `created=0`, `updated=4`였으므로 tenant별 event ID 연결과 중복 방지를 운영 Calendar에서 확인했습니다. 두 실행 전후 DB revision과 임차인 수는 변하지 않았습니다. 권한승인에 사용한 소유자 전용 임시 배포는 검증 후 제거했으며, 운영 Apps Script 버전 6과 Sites 버전 5는 그대로 유지했습니다. 앱은 Calendar 일정을 자동 삭제하지 않습니다.
+
+이후 운영 저장에서 세분화된 Google Docs 권한이 빠진 것이 확인되어 프로젝트 배포자 계정으로 Documents 권한을 다시 승인했습니다. 최신 revision `sha256-facf733b1f2f0e42fb201a6f16df8c4a69f9c50a579a03bcbb1dec34c3a3d61b`에서 현재현황을 연속 두 번 재생성했고, 두 번 모두 기존 문서 ID `1-HZYrBDD8HPZYO8sNCy33Q298DJ91LJIJAWRuWdQgFI`를 재사용했습니다. 전후 DB revision과 임차인 4명은 그대로였으며 임시 승인 함수와 배포는 제거했습니다.

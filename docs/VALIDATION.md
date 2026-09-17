@@ -19,6 +19,8 @@
 
 사용자 승인 후 `main`, Apps Script 버전 6, 소유자 전용 Sites 버전 5를 운영 반영했습니다. Apps Script 연속 GET의 revision과 전체 응답 해시가 일치했고 `contractCalendar=true`를 확인했습니다. 운영 Sites의 390×844 브라우저 검증도 통과했습니다. 별도 Calendar 적용 승인 후 실제 계약 일정 4건을 생성했으며, 동일 자료 재동기화는 `created=0`, `updated=4`로 기존 event만 갱신했습니다. 두 실행 전후 운영 DB revision과 임차인 수는 같았고 일정 삭제는 수행하지 않았습니다.
 
+배포자 계정의 Documents 권한을 다시 승인한 뒤 현재현황 연속 재생성도 두 번 모두 통과했습니다. 두 응답은 같은 문서 ID를 반환했고 DB revision과 임차인 수는 변하지 않았습니다. 승인용 임시 함수와 웹 앱 배포는 검증 후 제거했습니다.
+
 ## 건물 운영현황 2차 개발 — 2026-09-17
 
 먼저 운영 DB, `main`, Apps Script 버전 4, Sites 버전 3을 변경하지 않고 `work/building-operations-phase2-20260917`에서 격리 검증했습니다. 전체 테스트 통과와 사용자 승인 후 `main` 병합, Apps Script 버전 5, Sites 버전 4 배포를 수행했습니다.
