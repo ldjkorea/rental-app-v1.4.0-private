@@ -7,8 +7,8 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results');
 const results=[],errors=[],external=[];
 let browser,server,context,update=false;
-const assets=new Set(['index.html','sw.js','manifest.json','icon.svg','assets/core.js','assets/billing.js','assets/app.js','assets/enhancements.js','assets/styles.css','assets/workspace.css']);
-const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.svg':'image/svg+xml'};
+const assets=new Set(['index.html','sw.js','manifest.json','icon.svg','assets/core.js','assets/billing.js','assets/app.js','assets/enhancements.js','assets/styles.css','assets/workspace.css','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png']);
+const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
 async function test(name,action){
   try{await action();results.push({name,status:'pass'});console.log('PASS '+name);}
   catch(error){results.push({name,status:'fail',error:error.stack});console.error('FAIL '+name+': '+error.message);throw error;}
@@ -21,7 +21,7 @@ async function test(name,action){
     const file=pathname.slice('/rental-app/'.length)||'index.html';
     if(!assets.has(file))return res.writeHead(404).end();
     let body=fs.readFileSync(path.join(root,file));
-    if(file==='sw.js'&&update)body=Buffer.from(body.toString().replace("CACHE_PREFIX+'1.4.0-single-file'","CACHE_PREFIX+'1.4.0-single-file-test-update'"));
+    if(file==='sw.js'&&update)body=Buffer.from(body.toString().replace("CACHE_PREFIX+'1.4.0-status-docs-1'","CACHE_PREFIX+'1.4.0-status-docs-1-test-update'"));
     res.writeHead(200,{'Content-Type':types[path.extname(file)],'Cache-Control':'no-store'});res.end(body);
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -33,8 +33,8 @@ async function test(name,action){
   await test('PWA installs all application assets and gains control after reload',async()=>{
     await page.goto(url);await page.evaluate(()=>navigator.serviceWorker.ready);
     await page.reload();await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
-    const urls=await page.evaluate(async()=>{const names=await caches.keys();const cache=await caches.open(names.find(k=>k.endsWith('1.4.0-single-file')));return (await cache.keys()).map(r=>r.url);});
-    assert.equal(urls.length,10);assert.ok(urls.some(u=>u.endsWith('/assets/billing.js')));
+    const urls=await page.evaluate(async()=>{const names=await caches.keys();const cache=await caches.open(names.find(k=>k.endsWith('1.4.0-status-docs-1')));return (await cache.keys()).map(r=>r.url);});
+    assert.equal(urls.length,14);assert.ok(urls.some(u=>u.endsWith('/assets/billing.js')));assert.ok(urls.some(u=>u.endsWith('/icons/icon-512.png')));
     await page.screenshot({path:path.join(out,'verified-desktop.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
     for(const tab of ['home','tenants','history','settlement','settings']){
@@ -72,8 +72,8 @@ async function test(name,action){
     await page.close();page=await context.newPage();page.on('dialog',d=>d.accept());page.on('pageerror',e=>errors.push(e.message));
     await page.goto(url);await page.waitForFunction(async()=>!(await navigator.serviceWorker.getRegistration()).waiting);
     const names=await page.evaluate(()=>caches.keys());
-    assert.ok(names.includes('rental-app-%2Frental-app%2F-1.4.0-single-file-test-update'));
-    assert.ok(!names.includes('rental-app-%2Frental-app%2F-1.4.0-single-file'));
+    assert.ok(names.includes('rental-app-%2Frental-app%2F-1.4.0-status-docs-1-test-update'));
+    assert.ok(!names.includes('rental-app-%2Frental-app%2F-1.4.0-status-docs-1'));
     assert.ok(!names.includes('rental-foundation-v3'));
     assert.ok(names.includes('unrelated-app-cache'));assert.ok(names.includes('rental-app-%2Fother%2F-1.0'));
     await page.evaluate(()=>goToHistory('demo2'));await page.waitForTimeout(80);await page.evaluate(()=>editThisMonth());

@@ -6,9 +6,10 @@ const rootId = require('node:crypto').createHash('sha256').update(root.toLowerCa
 const version=require('../package.json').version;
 const port = Number(process.env.RENTAL_PORT || 4173);
 const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml'};
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png':'image/png'};
 const publicFiles = new Set(['index.html', 'manifest.json', 'icon.svg', 'sw.js',
-  'assets/app.js', 'assets/core.js', 'assets/styles.css', 'assets/billing.js', 'assets/enhancements.js', 'assets/workspace.css']);
+  'assets/app.js', 'assets/core.js', 'assets/styles.css', 'assets/billing.js', 'assets/enhancements.js', 'assets/workspace.css',
+  'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png']);
 const server = http.createServer((req, res) => {
   let relative;
   try { relative = decodeURIComponent(new URL(req.url, 'http://localhost').pathname).slice(1) || 'index.html'; }

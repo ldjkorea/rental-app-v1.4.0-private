@@ -205,7 +205,14 @@ async function workflow(page, label) {
             .map(e=>{const r=e.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)];})));
           await pages[i].screenshot({path:path.join(out,'pc-'+(i?'after':'before')+'-'+width+'-'+tab+'.png'),fullPage:true,animations:'disabled'});
         }
-        assert.deepEqual(geometry[1],geometry[0],tab+' desktop geometry');
+        assert.equal(geometry[1].length,geometry[0].length,tab+' desktop element count');
+        geometry[0].forEach((before,index)=>{
+          const after=geometry[1][index];
+          // Added status, audit and sync controls intentionally increase card height.
+          // Preserve the desktop shell and every content column's horizontal geometry.
+          assert.deepEqual([after[0],after[2]],[before[0],before[2]],tab+' desktop horizontal geometry '+index);
+          if(index<3)assert.deepEqual(after.slice(0,3),before.slice(0,3),tab+' desktop shell geometry '+index);
+        });
       }
     });
     await context.close();

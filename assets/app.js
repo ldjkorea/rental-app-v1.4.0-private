@@ -337,7 +337,7 @@ for(const eventType of ['click','change'])document.addEventListener(eventType,ev
 async function cloudRequest(options = {}) {
   const controller=new AbortController();
   syncController=controller;
-  const timeout=setTimeout(()=>controller.abort(),15000);
+  const timeout=setTimeout(()=>controller.abort(),options.method==='POST'?60000:15000);
   try {
     const response=await fetch(SHEET_URL,{...options,cache:'no-store',signal:controller.signal});
     if(!response.ok)throw new Error('서버 응답 오류');
@@ -349,6 +349,42 @@ async function cloudRequest(options = {}) {
 }
 function supportsSafeSync(result) {
   return result.capabilities?.conditionalWrite===true && typeof result.revision==='string' && !!result.revision;
+}
+function showCurrentStatusResult(report, dbSaved = false) {
+  const notice=document.getElementById('current-status-notice');
+  if(!notice)return;
+  notice.hidden=false;
+  notice.replaceChildren();
+  const success=report?.status==='ok';
+  notice.textContent=success?'현재현황 문서 갱신 완료'+(report.updatedAt?' · '+new Date(report.updatedAt).toLocaleString('ko-KR'):'')
+    :(dbSaved?'DB 저장은 완료됐습니다. ':'')+'현재현황 문서를 갱신하지 못했습니다. '+(report?.message||'서버에 현황 생성 기능과 문서 권한을 설정해주세요.')+' 설정 확인 후 현재현황 다시 생성을 눌러주세요.';
+  notice.dataset.state=success?'ok':'error';
+  if(success && /^[a-zA-Z0-9_-]+$/.test(report.documentId||'')) {
+    const link=document.createElement('a');
+    link.href='https://docs.google.com/document/d/'+report.documentId+'/edit';
+    link.textContent=' 현황 문서 열기';link.target='_blank';link.rel='noopener noreferrer';notice.appendChild(link);
+  }
+}
+async function regenerateCurrentStatus() {
+  if(isDemo){showToast('예시 모드에서는 현황 문서를 생성하지 않습니다.');return;}
+  if(!cloudEnabled){showToast('구글 동기화를 먼저 켜주세요.');return;}
+  if(syncBusy||persistenceBusy||storageFault||conflictingTab){showToast('저장 상태를 확인한 뒤 다시 시도해주세요.');return;}
+  if(cloudDirty){showToast('현재 변경 내용을 구글에 저장한 뒤 현황을 다시 생성해주세요.');return;}
+  if(!navigator.onLine){showToast('인터넷 연결 후 다시 시도해주세요.');return;}
+  const button=document.getElementById('regenerate-current-status');
+  clearTimeout(saveTimer);syncBusy=true;if(button)button.disabled=true;
+  try {
+    assertCurrentStorage();
+    const remote=await cloudRequest();
+    if(!supportsSafeSync(remote)||remote.capabilities?.currentStatus!==true)throw new Error('서버의 현재현황 생성 기능을 먼저 설정해주세요.');
+    if(!cloudBaseRevision || remote.revision!==cloudBaseRevision)throw new Error('서버 자료가 변경됐습니다. 최신 자료를 불러온 후 다시 생성해주세요.');
+    const requestId=crypto.randomUUID();
+    // No local tenant payload: the server renders its saved, revision-checked DB.
+    const result=await cloudRequest({method:'POST',body:JSON.stringify({protocol:'rental-sync-v2',action:'regenerateCurrentStatus',expectedRevision:remote.revision,requestId})});
+    if(result.requestId!==requestId||result.revision!==remote.revision)throw new Error('현황 생성 결과의 기준 자료를 확인하지 못했습니다.');
+    showCurrentStatusResult(result.docs);
+  } catch(error) {showCurrentStatusResult({status:'error',message:error.message});}
+  finally {syncBusy=false;if(button)button.disabled=false;if(cloudDirty&&cloudEnabled)saveTimer=setTimeout(doSync,2000);}
 }
 
 async function doSync(options = {}) {
@@ -384,6 +420,7 @@ async function doSync(options = {}) {
       lastCommitted=JSON.parse(JSON.stringify(currentData()));
     });
     success=true;showDataNotice('');
+    showCurrentStatusResult(result.docs,true);
     syncUI(!cloudEnabled?'local':cloudDirty?'pending':'saved');
   } catch(error) {syncUI(cloudEnabled?'error':'local');showDataNotice(error.message);}
   finally {
@@ -579,8 +616,9 @@ function renderHome(){
     const done=renewalDone[t.id]; // 'agreed'=협의완료, 계약종료일문자열=갱신완료
 
     if(done===contractEndStr){
-      // 갱신완료 → 흰색
-      aHtml+=`<div class="status-bar" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text);">✅ <strong>${esc(t.biz||t.name)}</strong> 계약갱신 완료!</div>`;
+      // 과거 완료 표시는 계약조건 갱신을 보장하지 않으므로 확인 동작을 남깁니다.
+      aHtml+=`<div class="status-bar pending">⚠️ <strong>${esc(t.biz||t.name)}</strong> 갱신 표시만 저장되어 있습니다. 새 계약조건 확인이 필요합니다.
+        <button onclick="completeRenewal('${t.id}')" style="margin-left:8px;font-size:11px;padding:5px 9px;border-radius:7px;border:1px solid var(--gold);background:var(--goldbg);color:var(--gold);cursor:pointer;">새 계약조건 입력</button></div>`;
     } else if(done==='agreed_'+contractEndStr){
       // 협의완료 → 초록색
       aHtml+=`<div class="status-bar done">🤝 <strong>${esc(t.biz||t.name)}</strong> 계약갱신필요 (협의완료)</div>`;
@@ -817,6 +855,7 @@ function goSettStep(step){
 /* ════════════════════════════════════════
    세입자 관리
 ════════════════════════════════════════ */
+let renewalEdit=null;
 function renderTenants(){
   const el=document.getElementById('tenant-list');
   if(!tenants.length){el.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div style="font-size:13px;">세입자가 없어요</div></div>`;return;}
@@ -825,13 +864,18 @@ function renderTenants(){
     if(query&&![t.name,t.biz,t.unit].join(' ').toLowerCase().includes(query))return '';
     const floor=getFloor(t.unit);
     const floorLabel=floor>0?`${floor}F`:'?F';
+    const collection=RentalBilling.collectionStatus(t,bills);
+    const history=Array.isArray(t.audit)?t.audit:[];
     return`<div class="t-item" style="cursor:default;">
       <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
         <button onclick="moveTenant(${i},-1)" ${i===0?'disabled':''} style="background:var(--surface2);border:1px solid var(--border);color:${i===0?'var(--text3)':'var(--text2)'};width:26px;height:26px;border-radius:6px;font-size:11px;cursor:pointer;padding:0;">▲</button>
         <button onclick="moveTenant(${i},1)" ${i===tenants.length-1?'disabled':''} style="background:var(--surface2);border:1px solid var(--border);color:${i===tenants.length-1?'var(--text3)':'var(--text2)'};width:26px;height:26px;border-radius:6px;font-size:11px;cursor:pointer;padding:0;">▼</button>
       </div>
       <div class="t-avatar" style="font-size:12px;letter-spacing:-.5px;">${floorLabel}</div>
-      <div class="t-info"><div class="t-name">${esc(t.biz||t.name)}</div><div class="t-unit">${esc(t.name)}·${esc(t.unit)}${esc(t.contract?' · '+t.contract:'')}</div></div>
+      <div class="t-info"><div class="t-name">${esc(t.biz||t.name)}${t.archived?' · 보관':''}</div><div class="t-unit">${esc(t.name)}·${esc(t.unit)}${esc(t.contract?' · '+t.contract:'')}</div>
+        <div style="font-size:12px;line-height:1.7;margin-top:5px;overflow-wrap:anywhere;">임대상태: <strong>${esc(RentalCore.leaseStatus(t))}</strong><br>수납상태: <strong style="color:${collection.totalOverdue?'var(--red)':'var(--green)'};">${esc(collection.status)}</strong> <span style="color:var(--text3);">(자동)</span>${collection.unknownDue?' · 납기 확인 필요':''}<br>보증금: ${t.deposit==null||t.deposit===''?'확인 필요':fmt(t.deposit)} · 총 미납: ${fmt(collection.totalUnpaid)}</div>
+        ${history.length?`<details class="audit-details" style="overflow-wrap:anywhere;"><summary>임차인 변경 이력 ${history.length}건</summary>${[...history].reverse().map(entry=>`<p><time>${esc(new Date(entry.at).toLocaleString('ko-KR'))}</time> ${esc(entry.action)} · ${esc(entry.detail)}</p>`).join('')}</details>`:''}
+      </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <button onclick="editTenant('${t.id}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:5px 9px;border-radius:7px;font-size:11px;cursor:pointer;">수정</button>
         <button onclick="${t.archived?'restoreTenant':'deleteTenant'}('${t.id}')" style="background:var(--redbg);border:1px solid rgba(192,57,43,.3);color:var(--red);padding:5px 9px;border-radius:7px;font-size:11px;cursor:pointer;">${t.archived?'보관 해제':'삭제 / 보관'}</button>
@@ -861,8 +905,10 @@ function updateRenewPreview(){
   if(r&&w&&e){w.style.display='block';e.textContent=r.str;}else if(w)w.style.display='none';
 }
 function openAddTenant(){
-  mgmtEdited=false;editTenantId=null;document.getElementById('modal-tenant-title').textContent='세입자 추가';
-  ['inp-name','inp-biz','inp-unit','inp-contract','inp-contract-first','inp-payday','inp-renew','inp-rent','inp-elevator','inp-elec-fixed','inp-pm','inp-pr','inp-pe','inp-pev','inp-pw','inp-wd'].forEach(f=>{const e=document.getElementById(f);if(e)e.value=f==='inp-renew'?'1년단위 재계약':'';});
+  mgmtEdited=false;editTenantId=null;renewalEdit=null;document.getElementById('modal-tenant-title').textContent='세입자 추가';
+  document.getElementById('renewal-edit-note').hidden=true;document.getElementById('save-tenant-button').textContent='저장';
+  ['inp-name','inp-biz','inp-unit','inp-contract','inp-contract-first','inp-payday','inp-renew','inp-rent','inp-deposit','inp-elevator','inp-elec-fixed','inp-pm','inp-pr','inp-pe','inp-pev','inp-pw','inp-wd'].forEach(f=>{const e=document.getElementById(f);if(e)e.value=f==='inp-renew'?'1년단위 재계약':'';});
+  document.getElementById('inp-lease-status').value=RentalCore.leaseStatus();
   document.getElementById('inp-paytype').value='후불납';document.getElementById('inp-elec-type').value='none';document.getElementById('inp-wo').value='';
   document.getElementById('elec-fixed-wrap').style.display='none';document.getElementById('renew-preview-wrap').style.display='none';
   document.getElementById('elec-preview').textContent='₩0';
@@ -871,8 +917,11 @@ function openAddTenant(){
   openModal('modal-tenant');
 }
 function editTenant(id){
-  const t=tenants.find(x=>x.id===id);if(!t)return;mgmtEdited=false;editTenantId=id;
+  const t=tenants.find(x=>x.id===id);if(!t)return;mgmtEdited=false;editTenantId=id;renewalEdit=null;
   document.getElementById('modal-tenant-title').textContent='세입자 수정';
+  document.getElementById('renewal-edit-note').hidden=true;document.getElementById('save-tenant-button').textContent='저장';
+  document.getElementById('inp-lease-status').value=RentalCore.leaseStatus(t);
+  document.getElementById('inp-deposit').value=t.deposit??'';
   ['name','biz','unit','contract','contract_first','payday','renew','rent','elevator'].forEach(f=>{const e=document.getElementById('inp-'+f.replace('_','-'));if(e)e.value=t[f]||t[f.replace('-','_')]||'';});
   updateRenewPreview();
   document.getElementById('inp-paytype').value=t.paytype||'후불납';
@@ -907,6 +956,7 @@ async function saveTenant(){
   const mgmtItems=readMgmtItemsFromModal();
   const mgmtTotal=calcMgmtTotal(mgmtItems);
   const d={name,unit,
+    leaseStatus:document.getElementById('inp-lease-status').value,
     biz:document.getElementById('inp-biz').value.trim(),
     contract:document.getElementById('inp-contract').value.trim(),
     contract_first:document.getElementById('inp-contract-first').value.trim(),
@@ -927,16 +977,54 @@ async function saveTenant(){
     period_water_day:document.getElementById('inp-wd').value,
     period_water_odd:document.getElementById('inp-wo').value,
   };
+  const deposit=document.getElementById('inp-deposit').value.trim();
+  if(deposit!=='')d.deposit=Number(deposit);
+  if(!RentalCore.LEASE_STATUSES.includes(d.leaseStatus)){showToast('임대상태를 선택해주세요.');return;}
   if(d.payday&&!RentalBilling.dueDate(d,'pay_rent',cY,cM)){showToast('월세 지급일은 1~31일 또는 말일로 입력해주세요.');return;}
   for(const field of ['period_mgmt','period_rent','period_elec','period_elev','period_waste','period_water_day'])
     if(d[field]&&(!Number.isInteger(Number(d[field]))||Number(d[field])<1||Number(d[field])>31)){showToast('사용기간 기준일은 1~31일로 입력해주세요.');return;}
   if(editTenantId){
     const previous=tenants.find(t=>t.id===editTenantId);if(!previous)return;
+    if(renewalEdit){
+      const dates=d.contract.split('~').map(s=>s.trim());
+      const parsed=dates.map(s=>/^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(s)?RentalBilling.dateISO(s):'');
+      if(renewalEdit.id!==previous.id||renewalEdit.oldContract!==previous.contract){showToast('계약 정보가 변경됐습니다. 창을 다시 열어주세요.');return;}
+      if(parsed.length!==2||!parsed[0]||!parsed[1]||parsed[0]>parsed[1]||parsed[1]<=RentalBilling.dateISO(renewalEdit.oldEnd)){
+        showToast('새 계약기간을 정확히 입력하고 종료일을 기존 종료일보다 늦게 지정해주세요.');document.getElementById('inp-contract').focus();return;
+      }
+    }
     for(const [month,rows] of Object.entries(bills))if(rows[editTenantId])snapshotBill(previous,rows[editTenantId],month,true);
     if(!mgmtEdited){d.mgmt=previous.mgmt||0;if(previous.mgmtItems)d.mgmtItems=previous.mgmtItems;else delete d.mgmtItems;}
+    const changes=tenantChanges(previous,d);
+    if(renewalEdit){
+      changes.renewalDone={from:renewalDone[previous.id]??null,to:renewalEdit.oldEnd};
+      renewalDone[previous.id]=renewalEdit.oldEnd;
+    }
     Object.assign(previous,d);
-  } else tenants.push({id:crypto.randomUUID(),...d});
-  if(!await save())return;closeModal('modal-tenant');renderAll();showToast(editTenantId?'수정됐어요':'세입자 추가됐어요');
+    if(Object.keys(changes).length)addAudit(previous,renewalEdit?'재계약 완료':'임차인 정보 변경',tenantChangeDetail(changes),changes);
+  } else {
+    const tenant={id:crypto.randomUUID(),...d};
+    const changes=tenantChanges({},d);addAudit(tenant,'임차인 등록',tenantChangeDetail(changes),changes);tenants.push(tenant);
+  }
+  if(!await save())return;
+  const renewed=!!renewalEdit;renewalEdit=null;closeModal('modal-tenant');renderAll();renderRenewalChecklist();
+  showToast(renewed?'새 계약조건을 저장하고 재계약을 완료했습니다.':editTenantId?'수정됐어요':'세입자 추가됐어요');
+}
+const tenantFieldLabels={name:'임차인',biz:'상호',unit:'호수',contract:'현재 계약기간',contract_first:'최초 계약기간',deposit:'보증금',rent:'월차임',mgmt:'관리비',mgmtItems:'관리비 세부 항목',leaseStatus:'임대상태',payday:'월납입 기준일',paytype:'납부방식',renew:'재계약 단위',elevator:'엘리베이터 운용비',elecType:'전기 배분 방식',elecFixed:'전기 고정 공급가',period_mgmt:'관리비 시작일',period_rent:'월세 시작일',period_elec:'전기 시작일',period_elev:'엘리베이터 시작일',period_waste:'오물 시작일',period_water_day:'수도 계량일',period_water_odd:'수도 부과월',renewalDone:'갱신 처리 기준 종료일'};
+function tenantChanges(previous,next){
+  const changes={};
+  for(const [field,to] of Object.entries(next)){
+    let from=previous[field]??null;
+    if(field==='leaseStatus'&&previous.id)from=RentalCore.leaseStatus(previous);
+    const numeric=['deposit','rent','mgmt','elevator','elecFixed'].includes(field);
+    const comparable=value=>numeric&&value!=null&&value!==''?Number(value):value;
+    if(JSON.stringify(comparable(from))!==JSON.stringify(comparable(to)))changes[field]={from,to};
+  }
+  return changes;
+}
+function tenantChangeDetail(changes){
+  const format=value=>value==null||value===''?'미입력':typeof value==='object'?JSON.stringify(value):String(value);
+  return Object.entries(changes).map(([field,value])=>`${tenantFieldLabels[field]||field}: ${format(value.from)} → ${format(value.to)}`).join(' · ');
 }
 async function deleteTenant(id) {
   const tenant=tenants.find(t=>t.id===id);if(!tenant)return;
@@ -945,14 +1033,14 @@ async function deleteTenant(id) {
   if(!makeRecovery('세입자 '+(hasHistory?'보관':'삭제')+' 전'))return;
   if(hasHistory){
     for(const [month,rows] of Object.entries(bills))if(rows[id])snapshotBill(tenant,rows[id],month,true);
-    tenant.archived=true;tenant.archivedAt=new Date().toISOString();
+    tenant.archived=true;tenant.archivedAt=new Date().toISOString();addAudit(tenant,'임차인 보관','과거 고지서와 체납 기록을 유지합니다.');
   } else {tenants=tenants.filter(t=>t.id!==id);delete renewalDone[id];}
   if(!await save())return;
   refreshDataViews();showToast(hasHistory?'세입자를 보관했습니다. 과거 고지서는 유지됩니다.':'삭제됐어요');
 }
 async function restoreTenant(id) {
   const tenant=tenants.find(t=>t.id===id);if(!tenant)return;
-  tenant.archived=false;delete tenant.archivedAt;
+  tenant.archived=false;delete tenant.archivedAt;addAudit(tenant,'임차인 보관 해제','현재 세입자 목록으로 복구했습니다.');
   if(await save()){renderAll();showToast('보관한 세입자를 복구했습니다.');}
 }
 
@@ -1020,8 +1108,8 @@ function renderRenewalChecklist(){
   const items=activeTenants().filter(t=>{
     const r=calcRenewPeriod(t.contract);if(!r)return false;
     const ce=t.contract?.split('~')[1]?.trim();
-    // 갱신완료는 제외, 협의완료+경과+협상기간은 표시
-    if(renewalDone[t.id]===ce)return false;
+    // 기존 완료 표시만 있는 계약도 새 조건을 입력할 수 있도록 유지합니다.
+    if(renewalDone[t.id]===ce)return true;
     return today>=r.start||today>=r.warnStart;
   });
   if(!items.length){card.style.display='none';return;}
@@ -1031,15 +1119,16 @@ function renderRenewalChecklist(){
     const ce=t.contract?.split('~')[1]?.trim();
     const done=renewalDone[t.id];
     const isAgreed=done==='agreed_'+ce;
+    const needsTerms=done===ce;
     const isWarn=today>=r.warnStart;
     return`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
       <div>
         <div style="font-size:13px;font-weight:700;color:${isWarn?'var(--red)':isAgreed?'var(--green)':'var(--gold)'};">${esc(t.biz||t.name)}</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px;">${esc(isAgreed?'협의완료 · 갱신대기':isWarn?'🚨 갱신기간 경과 ('+ce+' 만료)':'협상가능: '+r.str)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px;">${esc(needsTerms?'기존 갱신 표시 · 새 계약조건 확인 필요':isAgreed?'협의완료 · 갱신대기':isWarn?'🚨 갱신기간 경과 ('+ce+' 만료)':'협상가능: '+r.str)}</div>
       </div>
       <div style="display:flex;gap:6px;">
-        ${!isAgreed?`<button onclick="agreeRenewal('${t.id}')" style="background:var(--goldbg2);border:1px solid var(--gold);color:var(--gold);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">협의완료</button>`:''}
-        <button onclick="completeRenewal('${t.id}')" style="background:rgba(76,175,125,.15);border:1px solid rgba(76,175,125,.4);color:var(--green);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">갱신완료</button>
+        ${!isAgreed&&!needsTerms?`<button onclick="agreeRenewal('${t.id}')" style="background:var(--goldbg2);border:1px solid var(--gold);color:var(--gold);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">협의완료</button>`:''}
+        <button onclick="completeRenewal('${t.id}')" style="background:rgba(76,175,125,.15);border:1px solid rgba(76,175,125,.4);color:var(--green);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">${needsTerms?'새 계약조건 입력':'갱신완료'}</button>
       </div>
     </div>`;
   }).join('');
@@ -1047,13 +1136,22 @@ function renderRenewalChecklist(){
 async function agreeRenewal(id){
   const t=tenants.find(x=>x.id===id);if(!t)return;
   const ce=t.contract?.split('~')[1]?.trim();
+  if(!RentalBilling.dateISO(ce)){showToast('현재 계약 종료일을 먼저 확인해주세요.');return;}
+  if(renewalDone[id]==='agreed_'+ce)return;
+  addAudit(t,'재계약 협의 완료',`${ce} 종료 계약의 새 조건 입력 대기`);
   renewalDone[id]='agreed_'+ce;
   if(!await save())return;renderHome();renderRenewalChecklist();showToast('협의완료 처리됐어요 🤝');
 }
 async function completeRenewal(id){
   const t=tenants.find(x=>x.id===id);if(!t)return;
-  renewalDone[id]=t.contract?.split('~')[1]?.trim();
-  if(!await save())return;renderHome();renderRenewalChecklist();showToast('계약갱신 완료 ✅');
+  const oldEnd=t.contract?.split('~')[1]?.trim();
+  if(!RentalBilling.dateISO(oldEnd)){showToast('현재 계약 종료일을 먼저 확인해주세요.');return;}
+  editTenant(id);renewalEdit={id,oldEnd,oldContract:t.contract};
+  document.getElementById('modal-tenant-title').textContent='재계약 조건 입력';
+  const note=document.getElementById('renewal-edit-note');note.hidden=false;
+  note.textContent=`기존 종료일: ${oldEnd}. 새 계약기간과 보증금·월차임·관리비·임대상태를 확인한 뒤 저장하면 현재 계약조건이 갱신됩니다. 기존 고지서는 유지됩니다.`;
+  document.getElementById('save-tenant-button').textContent='새 계약조건 저장 · 재계약 완료';
+  document.getElementById('inp-contract').focus();
 }
 
 /* ════════════════════════════════════════
@@ -1186,9 +1284,12 @@ async function saveStamp(remove=false) {
   if(!await save())return;
   closeModal('modal-stamp');renderAll();renderHistChips();renderHistContent();showToast(remove?'완납 처리를 취소했습니다.':'완납 날짜를 저장했습니다.');
 }
-function addBillAudit(bill,action,detail) {
-  bill.audit=[...(bill.audit||[]),{at:new Date().toISOString(),action,detail}].slice(-100);
+function addAudit(target,action,detail,changes) {
+  const entry={at:new Date().toISOString(),action,detail};
+  if(changes)entry.changes=changes;
+  target.audit=[...(target.audit||[]),entry].slice(-100);
 }
+function addBillAudit(bill,action,detail) { addAudit(bill,action,detail); }
 async function setInvoiceIssued(value) {
   const bill=bills[activeMk()]?.[selTenantId];if(!bill)return;
   bill.invoiceIssued=value;addBillAudit(bill,'세금계산서 상태',value?'발급 완료':'발급 미확인');
@@ -1500,9 +1601,11 @@ async function previewKakao(){
   const elecVat = withVat(elecNet) - elecNet;
   const elecTotal = elecNet + elecVat;
 
-  const elevNet = b.paid?.pay_elev?.na ? 0 : (RentalBilling.charges(t, b).pay_elev || 0);
-  const elevVat = withVat(elevNet) - elevNet;
-  const elevTotal = elevNet + elevVat;
+  const elevTotal = RentalBilling.charges(t, b).pay_elev || 0;
+  const elevActualTotal=b.elevatorTotal!=null;
+  const elevNet=elevActualTotal?null:(b.paid?.pay_elev?.na?0:Number(b.elevator??t.elevator)||0);
+  const elevVat=elevActualTotal?null:elevTotal-elevNet;
+  const elevBreakdown=elevActualTotal?'실제 청구액 기준':`공급가액 ${fmtN(elevNet)}원 + 부가세 ${fmtN(elevVat)}원`;
 
   // 수도 관련 (홀수월 정산)
   const waterTargetMonth = (um % 2 === 0) ? `${uy}-${String(um - 1).padStart(2, '0')}` : key;
@@ -1520,18 +1623,16 @@ async function previewKakao(){
     11: `${uy}/08/21 ~ ${uy}/10/20`
   };
 
-  // 상태 판정
-  const isRentPaid = b.paid?.pay_rent?.paid || b.stampedRent;
-  const isMgmtPaid = b.paid?.pay_mgmt?.paid || b.stampedMgmt;
-  const isElecPaid = b.paid?.pay_elec?.paid;
-  const isElevPaid = b.paid?.pay_elev?.paid;
-  const isWaterPaid = wb.paid?.pay_water?.paid;
-
-  const rentStatus = isRentPaid ? '✅ 납부완료' : '[연체중]';
-  const mgmtStatus = isMgmtPaid ? '✅ 납부완료' : '[연체중]';
-  const elecStatus = isElecPaid ? '✅ 납부완료' : '[연체중]';
-  const elevStatus = isElevPaid ? '✅ 납부완료' : '[연체중]';
-  const waterStatus = isWaterPaid ? '✅ 납부완료' : '[연체중]';
+  // 대시보드·현재현황 문서와 같은 납기일 계산을 사용합니다.
+  const asOf=new Date();
+  const paymentState=RentalBilling.historicalPayment(t,b,uy,um,asOf);
+  const [waterYear,waterMonth]=waterTargetMonth.split('-').map(Number);
+  const waterState=RentalBilling.historicalPayment(t,wb,waterYear,waterMonth,asOf);
+  const paymentLabel=item=>item.na?'미부과':item.paid?'✅ 납부완료':item.status==='overdue'?'[연체중]':item.dueDate?'[납기 전]':'[납기 확인 필요]';
+  const rentItem=paymentState.items.pay_rent,mgmtItem=paymentState.items.pay_mgmt,elecItem=paymentState.items.pay_elec,elevItem=paymentState.items.pay_elev;
+  const waterItem=waterState.items.pay_water;
+  const isRentPaid=rentItem.paid,isMgmtPaid=mgmtItem.paid,isElecPaid=elecItem.paid,isElevPaid=elevItem.paid,isWaterPaid=waterItem.paid;
+  const rentStatus=paymentLabel(rentItem),mgmtStatus=paymentLabel(mgmtItem),elecStatus=paymentLabel(elecItem),elevStatus=paymentLabel(elevItem),waterStatus=paymentLabel(waterItem);
 
   // 입금 확인일
   const rentPaidDate = b.paid?.pay_rent?.date || (b.stampedRentDate ? b.stampedRentDate : '');
@@ -1540,11 +1641,11 @@ async function previewKakao(){
   // 요청 금액 계산
   let totalDue = 0;
   const unpaidItems = [];
-  if (!isRentPaid && rentTotal > 0) { totalDue += rentTotal; unpaidItems.push(`${um}월 월세 ${fmtN(rentTotal)}원`); }
-  if (!isMgmtPaid && mgmtTotal > 0) { totalDue += mgmtTotal; unpaidItems.push(`${um}월 관리비 ${fmtN(mgmtTotal)}원`); }
-  if (!isElecPaid && elecTotal > 0) { totalDue += elecTotal; unpaidItems.push(`${um}월 공용전기료 ${fmtN(elecTotal)}원`); }
-  if (!isElevPaid && elevTotal > 0) { totalDue += elevTotal; unpaidItems.push(`${um}월 승강기 유지관리보수비 ${fmtN(elevTotal)}원`); }
-  if (!isWaterPaid && waterAmt > 0) { totalDue += waterAmt; unpaidItems.push(`${waterTargetM}월 수도요금 ${fmtN(waterAmt)}원`); }
+  if (!rentItem.paid&&!rentItem.na&&rentItem.amount>0) { totalDue += rentItem.amount; unpaidItems.push(`${um}월 월세 ${fmtN(rentItem.amount)}원`); }
+  if (!mgmtItem.paid&&!mgmtItem.na&&mgmtItem.amount>0) { totalDue += mgmtItem.amount; unpaidItems.push(`${um}월 관리비 ${fmtN(mgmtItem.amount)}원`); }
+  if (!elecItem.paid&&!elecItem.na&&elecItem.amount>0) { totalDue += elecItem.amount; unpaidItems.push(`${um}월 공용전기료 ${fmtN(elecItem.amount)}원`); }
+  if (!elevItem.paid&&!elevItem.na&&elevItem.amount>0) { totalDue += elevItem.amount; unpaidItems.push(`${um}월 승강기 유지관리보수비 ${fmtN(elevItem.amount)}원`); }
+  if (!waterItem.paid&&!waterItem.na&&waterItem.amount>0) { totalDue += waterItem.amount; unpaidItems.push(`${waterTargetM}월 수도요금 ${fmtN(waterItem.amount)}원`); }
 
   // 재계약 기간
   const rp = calcRenewPeriod(t.contract);
@@ -1557,7 +1658,7 @@ async function previewKakao(){
     const curW = waterHistory.find(w => w.mk === mk);
     const mb = (bills[mk] || {})[t.id] || {};
     const mAmt = Number(mb.water) || 0;
-    const isPaid = mb.paid?.pay_water?.paid;
+    const waterPayment=RentalBilling.historicalPayment(t,mb,uy,m,asOf).items.pay_water;
     const isFuture = m > um;
 
     if (isFuture) {
@@ -1574,11 +1675,11 @@ async function previewKakao(){
 ※ ${m}월 수도요금은 이번 입금 요청금액에 포함되지 않습니다.`;
     }
 
-    return `[${m}월 수도]${isPaid ? '' : ' [연체중]'}
+    return `[${m}월 수도]${waterPayment.status==='overdue' ? ' [연체중]' : ''}
 
 정산 대상 기간 : ${waterPeriodMap[m] || ''}
 수도요금 : ${fmtN(mAmt)}원
-상태 : ${isPaid ? '✅ 납부완료' : '[연체중]'}`;
+상태 : ${paymentLabel(waterPayment)}`;
   }).join('\n\n---\n\n');
 
   // 관리비 세부 항목
@@ -1593,7 +1694,7 @@ async function previewKakao(){
       mgmtLines += `\n${def.no}. ${x.name || def.name} : ${amtStr}`;
     });
   } else {
-    mgmtLines = `\n1-1. 건물 관리 운영비 : 60,000원\n1-2. 관리 행정 운영비 : 100,000원\n2-1. 청소 용역비 : 50,000원\n2-2. 건물 환경 관리비 : 20,000원\n3. 경비비 : 미운영\n4. 소독비 : 미운영\n5. 승강기 유지비 : ${elevTotal > 0 ? '별도 부과' : '미운영'}\n6. 냉난방비 및 급탕비 : 미운영\n7-1. 소방 안전 관리비 : 10,000원\n7-2. 시설 유지 관리비 : 60,000원\n7-3. 보안 방범 관리비 : 미운영\n7-4. 냉방 시설 청소비 : 미운영\n8. 위탁관리 수수료 : 미운영\n9. 전기료 : 별도 부과\n10. 수도료 : 별도 실비정산\n11. 가스 사용료 : 미운영\n12. 정화조 오물처리 수수료 : 실비정산\n13. 폐기물 처리 수수료 : 미운영\n14. 건물 보험료 : 미운영`;
+    mgmtLines = `\n관리비 세부 항목 : 기존 자료에 세부 항목이 없어 총 관리비 기준으로 안내합니다.`;
   }
 
   const extraTotal = mgmtTotal + elecTotal + elevTotal;
@@ -1617,7 +1718,7 @@ ${um}월 공용전기료 (${elecPeriod})
 
 ${um}월 승강기 유지관리보수비 (${rentPeriod})
 : ${fmtN(elevTotal)}원 ${elevStatus}
-(공급가액 ${fmtN(elevNet)}원 + 부가세 ${fmtN(elevVat)}원)
+(고지서 실제 청구액 기준)
 
 ${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
 : ${fmtN(waterAmt)}원 ${waterStatus}
@@ -1634,7 +1735,7 @@ ${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
 
 ■ 계약 현황
 
-현재 계약 상태 : 정상 계약
+현재 계약 상태 : ${RentalCore.leaseStatus(t)}
 
 최초 계약 기간 : ${t.contract_first || ''}
 현재 계약 기간 : ${t.contract || ''}
@@ -1713,9 +1814,8 @@ ${mgmtLines}
 
 산정 기간 : ${rentPeriod}
 
-공급가액 : ${fmtN(elevNet)}원
-부가세 : ${fmtN(elevVat)}원
 합계 : ${fmtN(elevTotal)}원
+산정 방식 : ${elevBreakdown}
 상태 : ${elevStatus}
 
 ---
@@ -1750,7 +1850,7 @@ ${um}월 공용전기료 (${elecPeriod})
 
 ${um}월 승강기 유지관리보수비 (${rentPeriod})
 : ${fmtN(elevTotal)}원 ${elevStatus}
-(공급가액 ${fmtN(elevNet)}원 + 부가세 ${fmtN(elevVat)}원)
+(${elevBreakdown})
 
 ${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
 : ${fmtN(waterAmt)}원 ${waterStatus}

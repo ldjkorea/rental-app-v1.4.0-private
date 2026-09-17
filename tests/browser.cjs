@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const core = require('../assets/core.js');
+const billing = require('../assets/billing.js');
 const out = path.resolve(__dirname, '../test-results'); fs.mkdirSync(out, {recursive: true});
 const results = [];
 const sample = () => ({...core.empty(), tenants: [
@@ -228,6 +229,61 @@ async function state(page) { return page.evaluate(() => currentData()); }
     await page.evaluate(id => deleteTenant(id), id); assert.equal((await state(page)).tenants.length, 0);
     await page.evaluate(() => restoreRecovery()); assert.deepEqual((await state(page)).tenants, data.tenants);
     assert.deepEqual(errors, []); await context.close();
+  });
+  await run('lease status and renewal update current terms, audit changes and preserve old bills', async () => {
+    const data=sample(),tenant=data.tenants[0];
+    Object.assign(tenant,{contract:'2025/10/20 ~ 2026/10/19',payday:'15일',deposit:40000000,leaseStatus:'재계약예정'});
+    data.bills={'2026-09':{t1:billing.freezeBill(tenant,{rent:1000000,mgmt:100000},'2026-09')}};
+    data.renewalDone={t1:'2026/10/19'};
+    const {page,context,errors}=await pageFor(data);await page.locator('#nav-tenants').click();
+    assert.match(await page.locator('#tenant-list').innerText(),/재계약예정/);
+    await page.evaluate(()=>completeRenewal('t1'));
+    await page.locator('#inp-contract').fill('2026/10/20 ~ 2027/10/19');
+    await page.locator('#inp-rent').fill('1100000');await page.locator('#inp-deposit').fill('50000000');
+    await page.locator('#inp-lease-status').selectOption({label:'임대중'});await page.evaluate(()=>saveTenant());
+    const state=await page.evaluate(()=>currentData()),current=state.tenants.find(t=>t.id==='t1');
+    assert.equal(current.contract,'2026/10/20 ~ 2027/10/19');assert.equal(Number(current.rent),1100000);assert.equal(current.deposit,50000000);
+    assert.equal(current.leaseStatus,'임대중');assert.equal(state.renewalDone.t1,'2026/10/19');assert.equal(state.bills['2026-09'].t1.rent,1000000);
+    assert.equal(current.audit.at(-1).action,'재계약 완료');assert.match(current.audit.at(-1).detail,/현재 계약기간/);
+    assert.deepEqual(errors,[]);await context.close();
+  });
+  await run('failed renewal save rolls back current terms, renewal marker and audit together', async () => {
+    const data=sample(),tenant=data.tenants[0];
+    Object.assign(tenant,{contract:'2025/10/20 ~ 2026/10/19',payday:'15일',deposit:40000000,leaseStatus:'재계약예정'});
+    data.renewalDone={t1:'agreed_2026/10/19'};
+    const {page,context}=await pageFor(data);await page.evaluate(()=>completeRenewal('t1'));
+    await page.locator('#inp-contract').fill('2026/10/20 ~ 2027/10/19');await page.locator('#inp-rent').fill('1100000');
+    await page.evaluate(()=>{const original=Storage.prototype.setItem;window.restoreStorage=()=>Storage.prototype.setItem=original;Storage.prototype.setItem=function(key,value){if(key===RentalCore.STATE_KEY)throw new DOMException('quota','QuotaExceededError');return original.call(this,key,value);};return saveTenant();});
+    const state=await page.evaluate(()=>currentData()),current=state.tenants.find(t=>t.id==='t1');
+    assert.equal(current.contract,'2025/10/20 ~ 2026/10/19');assert.equal(Number(current.rent),1000000);
+    assert.equal(state.renewalDone.t1,'agreed_2026/10/19');assert.equal(current.audit,undefined);
+    assert.match(await page.locator('#data-notice').innerText(),/저장하지 못해/);await context.close();
+  });
+  await run('current status regeneration uses server DB revision and sends no tenant payload', async () => {
+    const data={...sample(),localMeta:{cloudPending:false,cloudBaseRevision:'r1'}};
+    const {page,context,errors}=await pageFor(data);let posted;
+    await context.route('https://script.google.com/**',async route=>{
+      if(route.request().method()==='GET')return route.fulfill({json:{status:'ok',data:sample(),revision:'r1',capabilities:{conditionalWrite:true,currentStatus:true}}});
+      posted=JSON.parse(route.request().postData());return route.fulfill({json:{status:'ok',revision:'r1',requestId:posted.requestId,capabilities:{conditionalWrite:true,currentStatus:true},docs:{status:'ok',documentId:'doc_test_1',updatedAt:'2026-09-17T00:00:00.000Z'}}});
+    });
+    await page.evaluate(()=>{cloudEnabled=true;document.getElementById('cloud-enabled').checked=true;return regenerateCurrentStatus();});
+    assert.equal(posted.action,'regenerateCurrentStatus');assert.equal(Object.hasOwn(posted,'data'),false);
+    assert.match(await page.locator('#current-status-notice').innerText(),/갱신 완료/);
+    assert.match(await page.locator('#current-status-notice a').getAttribute('href'),/doc_test_1/);
+    assert.deepEqual(errors,[]);await context.close();
+  });
+  await run('Docs failure warns separately after the DB save acknowledgement', async () => {
+    const data={...sample(),localMeta:{cloudPending:false,cloudBaseRevision:'r1'}};
+    const {page,context}=await pageFor(data);let serverData=sample();
+    await context.route('https://script.google.com/**',async route=>{
+      if(route.request().method()==='GET')return route.fulfill({json:{status:'ok',data:serverData,revision:'r1',capabilities:{conditionalWrite:true,currentStatus:true}}});
+      const request=JSON.parse(route.request().postData());serverData=request.data;
+      return route.fulfill({json:{status:'ok',revision:'r2',requestId:request.requestId,capabilities:{conditionalWrite:true,currentStatus:true},docs:{status:'error',message:'문서 권한 테스트 실패'}}});
+    });
+    await page.evaluate(async()=>{cloudEnabled=true;document.getElementById('cloud-enabled').checked=true;tenants[0].name='DB 저장 완료 자료';await save();clearTimeout(saveTimer);await manualSync();});
+    assert.equal(await page.evaluate(()=>cloudDirty),false);assert.equal(serverData.tenants[0].name,'DB 저장 완료 자료');
+    assert.match(await page.locator('#current-status-notice').innerText(),/DB 저장은 완료/);assert.match(await page.locator('#current-status-notice').innerText(),/문서 권한 테스트 실패/);
+    await context.close();
   });
   await run('changing tenants never carries the previous draft into displayed total', async () => {
     const {page, context} = await pageFor(); await page.evaluate(() => goToHistory('t1')); await page.waitForTimeout(100);

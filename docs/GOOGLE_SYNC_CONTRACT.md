@@ -1,29 +1,58 @@
-# Google 동기화 — 현재 클라이언트가 요구하는 규격
+# Google 동기화 서버 계약
 
-**서버 구현 완료 문서가 아닙니다.** 현재 저장소에는 실제 Google Apps Script 소스가 없으며 아래 조건을 만족하는 모의 응답으로 클라이언트만 검증했습니다.
+## 읽기
 
-## 읽기 응답
-
-```json
-{"status":"ok","data":{"tenants":[],"bills":{}},"revision":"r1","capabilities":{"conditionalWrite":true}}
-```
-
-`data`는 기존 JSON 데이터 구조입니다. capability나 revision이 없는 구형 서버는 불러오기만 사용할 수 있습니다.
-
-## 조건부 쓰기 요청과 성공 응답
+GET 성공 응답은 저장된 기존 JSON, 현재 원문의 SHA-256 revision, 지원 기능을 반환한다.
 
 ```json
-{"protocol":"rental-sync-v2","expectedRevision":"r1","requestId":"고유 요청 ID","data":{"tenants":[],"bills":{}}}
+{
+  "status": "ok",
+  "data": {"tenants": [], "bills": {}},
+  "revision": "sha256-...",
+  "protocol": "rental-sync-v2",
+  "capabilities": {"conditionalWrite": true, "currentStatus": true}
+}
 ```
+
+클라이언트는 `conditionalWrite`와 revision이 없으면 불러오기만 허용하고 업로드를 차단한다.
+
+## 조건부 저장
 
 ```json
-{"status":"ok","revision":"r2","requestId":"동일한 요청 ID","capabilities":{"conditionalWrite":true}}
+{
+  "protocol": "rental-sync-v2",
+  "action": "save",
+  "expectedRevision": "sha256-...",
+  "requestId": "고유 요청 ID",
+  "data": {"tenants": [], "bills": {}}
+}
 ```
 
-클라이언트는 업로드 전 읽은 revision과 로컬 기준을 비교하고, 응답의 requestId·새 revision·capability를 검사합니다. 충돌 응답 `{"status":"conflict"}`은 실패로 처리하며 로컬 변경을 유지합니다.
+서버는 스크립트 잠금 안에서 revision을 비교하고, 전체 이전 원문을 `_RentalSyncRecovery`에 분할 백업해 재확인한 뒤 저장한다. 저장 결과도 다시 읽어 확인한다. 같은 request ID와 같은 내용의 재시도는 중복 쓰기 없이 성공하고, 오래된 revision은 `conflict`, 구형 무조건 쓰기는 `unsupported`로 거절한다.
 
-## 서버에서 실제로 검증해야 할 조건
+DB 성공과 Google Docs 결과는 분리한다.
 
-버전 검사와 데이터 저장이 하나의 원자 작업이어야 합니다. `conditionalWrite: true` 문구만 추가하는 것으로는 충분하지 않습니다. 인증·권한, 서버 저장 성공 후 응답, 동시 기기 충돌, 재시도 requestId의 중복 처리, CORS·리다이렉트 및 오류 응답도 실제 배포 환경에서 검증해야 합니다.
+```json
+{
+  "status": "ok",
+  "revision": "sha256-...",
+  "requestId": "동일한 요청 ID",
+  "capabilities": {"conditionalWrite": true, "currentStatus": true},
+  "docs": {"status": "ok", "documentId": "...", "updatedAt": "..."}
+}
+```
 
-파일 복원·초기화 시 클라이언트 기준 revision은 초기화됩니다. 이후 서버 자료를 대조하고 수동 저장을 선택해야 하며, 구형 서버로의 무조건 덮어쓰기를 허용하지 않습니다.
+문서 갱신 실패도 최상위 `status`는 `ok`이며, `docs.status`만 `error`가 된다. 클라이언트는 DB 저장 완료를 유지하고 문서 경고와 수동 재생성 동작을 제공한다.
+
+## 현재현황 수동 재생성
+
+```json
+{
+  "protocol": "rental-sync-v2",
+  "action": "regenerateCurrentStatus",
+  "expectedRevision": "sha256-...",
+  "requestId": "고유 요청 ID"
+}
+```
+
+이 요청에는 `data`를 보내지 않는다. 서버는 revision이 일치할 때 현재 저장 DB로만 문서를 갱신하며 DB 원문은 변경하지 않는다.

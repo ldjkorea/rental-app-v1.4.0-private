@@ -119,6 +119,18 @@ test('backups preserve optional compatibility fields on bill and tenant records'
  const data=fixture();data.tenants[0].archived=true;data.bills['2026-09'].t1.customLegacyField='keep';
  assert.equal(c.validateData(c.envelope(data)).bills['2026-09'].t1.customLegacyField,'keep');
 });
+test('legacy tenants default to active lease only at the display boundary',()=>{
+ const data=fixture(),validated=c.validateData(data);
+ assert.equal(c.leaseStatus(validated.tenants[0]),'임대중');
+ assert.equal(Object.hasOwn(validated.tenants[0],'leaseStatus'),false);
+});
+test('tenant lease status, deposit and compatible audit changes are validated and preserved',()=>{
+ const data=fixture();data.tenants[0].leaseStatus='명도소송중';data.tenants[0].deposit=50000000;
+ data.tenants[0].audit=[{at:'2026-09-17T00:00:00.000Z',action:'임차인 정보 변경',detail:'임대상태 변경',changes:{leaseStatus:{from:'임대중',to:'명도소송중'}}}];
+ const validated=c.validateData(data);assert.equal(validated.tenants[0].leaseStatus,'명도소송중');assert.equal(validated.tenants[0].deposit,50000000);assert.equal(validated.tenants[0].audit[0].changes.leaseStatus.to,'명도소송중');
+ for(const invalid of ['퇴거예정','',null]){const copy=fixture();copy.tenants[0].leaseStatus=invalid;assert.throws(()=>c.validateData(copy));}
+ const fractional=fixture();fractional.tenants[0].deposit=1.5;assert.throws(()=>c.validateData(fractional));
+});
 test('leap-year and year transition amounts exclude future unissued months',()=>{
  const bills={'2024-02':{t1:{rent:100000,mgmt:10000}},'2027-01':{t1:{rent:900000}}};
  assert.equal(b.arrears([{...tenant,payday:'말일'}],bills,'2024-02-29').total,0);

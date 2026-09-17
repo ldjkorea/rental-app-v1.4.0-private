@@ -1,3 +1,4 @@
+// Generated from assets/billing.js by npm run build. Do not edit.
 /* Monetary and payment rules. No DOM, network, or persistence dependencies. */
 (function (root) {
   'use strict';

@@ -34,11 +34,15 @@ function build() {
 
 if (require.main === module) {
   const output = build(), target = path.join(root, 'index.html');
+  const billingTarget = path.join(root, 'server/Billing.gs');
+  const billingSource = '// Generated from assets/billing.js by npm run build. Do not edit.\n' + fs.readFileSync(path.join(root, 'assets/billing.js'), 'utf8');
   if (process.argv.includes('--check')) {
     if (fs.readFileSync(target, 'utf8') !== output) throw new Error('index.html is stale: run npm run build');
+    if (fs.readFileSync(billingTarget, 'utf8') !== billingSource) throw new Error('server/Billing.gs is stale: run npm run build');
     console.log('Single-file output matches sources');
   } else {
     fs.writeFileSync(target, output);
+    fs.writeFileSync(billingTarget, billingSource);
     console.log('Built index.html (' + Buffer.byteLength(output) + ' bytes)');
   }
 }

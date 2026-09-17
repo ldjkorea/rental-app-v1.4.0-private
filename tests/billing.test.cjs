@@ -62,3 +62,20 @@ test('arrears aggregates only saved past bills and excludes future months',()=>{
  assert.equal(result.tenantCount,1);assert.equal(result.monthCount,1);
  assert.equal(result.tenants[0].id,'a');assert.deepEqual(result.tenants[0].months.map(x=>x.month),['2026-08']);
 });
+test('collection status derives all four labels from saved bills and due dates',()=>{
+ const tenant={id:'status',name:'상태',unit:'201호',payday:'15일',rent:100000,mgmt:10000,elevator:0};
+ const base={'2026-09':{status:{rent:100000,mgmt:10000,electricity:30000,water:10000}}};
+ assert.equal(b.collectionStatus(tenant,base,'2026-09-15').status,'정상');
+ assert.equal(b.collectionStatus(tenant,base,'2026-10-01').status,'월차임·공과금 연체');
+ const rentPaid=structuredClone(base);rentPaid['2026-09'].status.paid={pay_rent:{date:'2026.09.15'}};
+ assert.equal(b.collectionStatus(tenant,rentPaid,'2026-10-01').status,'공과금 연체');
+ const utilitiesPaid=structuredClone(base);utilitiesPaid['2026-09'].status.stampedMgmt=true;utilitiesPaid['2026-09'].status.stampedMgmtDate='2026.09.30';
+ assert.equal(b.collectionStatus(tenant,utilitiesPaid,'2026-10-01').status,'월차임 연체');
+});
+test('collection status keeps unknown due amounts out of arrears and reports recent payment',()=>{
+ const tenant={id:'status2',name:'상태2',unit:'301호',payday:'',rent:100000,mgmt:10000,elevator:0};
+ const bills={'2026-08':{status2:{rent:100000,mgmt:10000,paid:{pay_mgmt:{date:'2026.09.03'}}}},'2026-11':{status2:{rent:900000}}};
+ const result=b.collectionStatus(tenant,bills,'2026-09-20');
+ assert.equal(result.status,'정상');assert.equal(result.overdueRent,0);assert.equal(result.unknownDue,110000);
+ assert.equal(result.lastPaymentDate,'2026-09-03');assert.equal(result.billCount,1);
+});

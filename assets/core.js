@@ -3,6 +3,9 @@
   'use strict';
   const STATE_KEY = 'rentalApp.state.v1';
   const BACKUP_KEY = 'rentalApp.recovery.v1';
+  const LEASE_STATUSES = Object.freeze(['임대중','재계약예정','계약종료예정','명도소송중','강제집행중','공실(정리중)','임대모집중']);
+  // Older backups remain unchanged. Apply the default only at the display boundary.
+  const leaseStatus = tenant => LEASE_STATUSES.includes(tenant?.leaseStatus) ? tenant.leaseStatus : '임대중';
   const KEYS = ['tenants', 'bills', 'loans', 'expenses', 'renewalDone', 'settInputs', 'waterRatio'];
   const empty = () => ({tenants: [], bills: {}, loans: [], expenses: {}, renewalDone: {},
     settInputs: {}, waterRatio: {r2: 19, r3: 10, r4: 5}});
@@ -60,6 +63,14 @@
       if (item.status != null && !['active', 'actual', 'na', 'inactive'].includes(item.status)) fail('관리비 상태를 확인해주세요.');
     });
   }
+  function validateAudit(entries) {
+    if (!Array.isArray(entries)) fail('변경 이력 형식을 확인해주세요.');
+    entries.forEach(entry => {
+      record(entry, '변경 이력');
+      if (!['at','action','detail'].every(key => typeof entry[key] === 'string')) fail('변경 이력 항목을 확인해주세요.');
+      if (entry.changes != null) record(entry.changes, '변경 전후 값');
+    });
+  }
   function validateData(input) {
     record(input, '백업');
     inspect(input);
@@ -70,6 +81,9 @@
     validateList(data.tenants, '세입자', ['rent', 'mgmt', 'elevator', 'elecFixed']);
     data.tenants.forEach(t => {
       flags(t, ['archived'], '세입자');
+      if (t.leaseStatus !== undefined && !LEASE_STATUSES.includes(t.leaseStatus)) fail('임대상태를 확인해주세요.');
+      if (t.deposit != null && t.deposit !== '') number(t.deposit, '보증금', true);
+      if (t.audit != null) validateAudit(t.audit);
       if (typeof t.unit !== 'string') fail('세입자 호수를 확인해주세요.');
       for (const key of ['biz', 'contract', 'contract_first', 'payday', 'renew', 'paytype']) {
         if (t[key] != null && typeof t[key] !== 'string') fail(`세입자.${key}: 문자열이 필요합니다.`);
@@ -130,11 +144,7 @@
       if (bill.paydaySnapshot != null && typeof bill.paydaySnapshot !== 'string') fail('고지서 납기일을 확인해주세요.');
       if (bill.snapshotEstimated != null && (!Array.isArray(bill.snapshotEstimated) || bill.snapshotEstimated.some(x => typeof x !== 'string'))) fail('snapshot 보완 이력을 확인해주세요.');
       if (bill.audit != null) {
-        if(!Array.isArray(bill.audit))fail('변경 이력 형식을 확인해주세요.');
-        bill.audit.forEach(entry=>{
-          record(entry,'변경 이력');
-          if(!['at','action','detail'].every(key=>typeof entry[key]==='string'))fail('변경 이력 항목을 확인해주세요.');
-        });
+        validateAudit(bill.audit);
       }
     }));
     record(data.renewalDone, '갱신 상태');
@@ -190,7 +200,7 @@
     const m = Number(match[1]), d = Number(match[2]);
     return m >= 1 && m <= 12 && d >= 1 && d <= new Date(year, m, 0).getDate();
   }
-  root.RentalCore = {STATE_KEY, BACKUP_KEY, KEYS, empty, validateData, envelope, load, persist,
+  root.RentalCore = {STATE_KEY, BACKUP_KEY, KEYS, LEASE_STATUSES, leaseStatus, empty, validateData, envelope, load, persist,
     backup, escapeHtml, validMeterDate, storageToken, persistChecked};
   if (typeof module !== 'undefined') module.exports = root.RentalCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
