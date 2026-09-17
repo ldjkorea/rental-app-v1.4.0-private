@@ -59,6 +59,10 @@
   .data-notice, .reconcile, .reconcile-details { overflow-wrap:anywhere; }
   .step-row { padding:16px 12px; }
   .building-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .building-attention { padding:16px 14px; }
+  .attention-heading { align-items:stretch; flex-direction:column; gap:12px; }
+  .attention-heading .btn { width:100%; }
+  .attention-item { align-items:flex-start; }
   .building-filters button { min-width:0; padding:8px 4px; }
   .building-card { grid-template-columns:48px minmax(0,1fr); gap:12px; padding:17px 14px; }
   .building-floor span { font-size:25px; }

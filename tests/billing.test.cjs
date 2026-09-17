@@ -29,6 +29,15 @@ test('legacy elevator supply and new elevator actual totals remain compatible',(
 test('real dates, leap days and monthly boundary periods',()=>{
  assert.equal(b.dateISO('2024.02.29'),'2024-02-29');assert.equal(b.dateISO('2026-02-29'),'');assert.equal(b.period(1,2026,1),'12/01~12/31');assert.equal(b.period(31,2026,3),'02/28~03/30');
 });
+test('contract deadlines use date-only boundaries for every warning threshold',()=>{
+ const today='2026-09-17',contract=days=>`2026/01/01 ~ ${new Date(Date.UTC(2026,8,17+days)).toISOString().slice(0,10)}`;
+ for(const [days,level,label] of [[100,'none','D-100'],[45,'check','D-45'],[44,'check','D-44'],[30,'imminent','D-30'],[1,'imminent','D-1'],[0,'imminent','오늘 만료'],[-1,'overdue','D+1 경과']]){
+   assert.deepEqual(b.contractDeadline(contract(days),today),{endDate:contract(days).split(' ~ ')[1],days,label,level});
+ }
+ assert.equal(b.contractDeadline('',today),null);assert.equal(b.contractDeadline('잘못된 계약',today),null);
+ // A renewed current contract replaces the old period, so its new end date does not warn.
+ assert.equal(b.contractDeadline(contract(100),today).level,'none');
+});
 test('due dates clamp rent payday to month length and management to month end',()=>{
  const tenant={payday:'매월 31일'};
  assert.equal(b.dueDate(tenant,'pay_rent',2026,2),'2026-02-28');

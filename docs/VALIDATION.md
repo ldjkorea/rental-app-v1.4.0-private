@@ -1,5 +1,22 @@
 # v1.4.0 최종 검증 기록
 
+## 계약기한 경고·Calendar 연동 3차 개발 — 2026-09-17
+
+`backup/phase2-complete-20260917`에서 `work/contract-alert-calendar-phase3-20260917` 브랜치를 만들고 운영 DB와 실제 Google Calendar를 변경하지 않은 채 격리 검증했습니다.
+
+| 검사 | 결과 |
+|---|---:|
+| 로직·저장·서버·서비스 워커 단위 검사 | 78 / 78 통과 |
+| 계약 D-day 경계와 상태별 경고 검사 | 통과 |
+| Calendar 생성·중복 방지·동일 event 갱신 mock 검사 | 통과 |
+| Calendar 권한/API 실패와 DB 격리 검사 | 통과 |
+| 기본 브라우저 시나리오 | 27 / 27 통과 |
+| 기존 브라우저·정산·납부·재계약·Docs 회귀 | 통과 |
+| PWA 설치·업데이트·오프라인 | 통과 |
+| HTTP 및 단일 HTML 6개 화면 크기·6개 메뉴 | 통과 |
+
+계약 종료 100일, 45일, 44일, 30일, 1일, 당일, 1일 경과와 갱신된 현재 계약을 고정 날짜로 검사했습니다. 재계약·계약종료·명도소송·강제집행 문구, 공실·모집중 경고 억제, 조회 전후 데이터 불변, 모바일 가로 넘침과 콘솔 오류 0건도 확인했습니다. Calendar 검사는 mock만 사용했으며 실제 운영 일정은 생성·수정·삭제하지 않았습니다. 세부 구조와 배포 전 확인사항은 [CONTRACT_ALERT_CALENDAR_PHASE3.md](CONTRACT_ALERT_CALENDAR_PHASE3.md)에 기록했습니다.
+
 ## 건물 운영현황 2차 개발 — 2026-09-17
 
 먼저 운영 DB, `main`, Apps Script 버전 4, Sites 버전 3을 변경하지 않고 `work/building-operations-phase2-20260917`에서 격리 검증했습니다. 전체 테스트 통과와 사용자 승인 후 `main` 병합, Apps Script 버전 5, Sites 버전 4 배포를 수행했습니다.

@@ -39,20 +39,32 @@ function server(options={}) {
   const document={getId:()=>docId,getUrl:()=>`https://docs.google.com/document/d/${docId}/edit`,getBody:()=>body,saveAndClose:()=>{}};
   const DocumentApp={ElementType:{PARAGRAPH:'PARAGRAPH'},ParagraphHeading:{HEADING1:'HEADING1',HEADING2:'HEADING2'},openById:id=>{if(fail==='docs'||id!==docId)throw Error('document unavailable');return document;},create:()=>{if(fail==='docs')throw Error('document unavailable');return document;}};
   const DriveApp={getFilesByName:()=>({hasNext:()=>false,next:()=>null})};
+  const calendarEvents=new Map();let calendarSequence=0;
+  const dateKey=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  class CalendarEvent {
+    constructor(title,date,description){this.id='event-'+(++calendarSequence);this.title=title;this.date=dateKey(date);this.description=description||'';}
+    getId(){return this.id;}setTitle(value){this.title=value;return this;}setDescription(value){this.description=value;return this;}
+    setAllDayDate(value){this.date=dateKey(value);return this;}
+  }
+  const calendar={
+    getEventById:id=>{if(fail==='calendar')throw Error('calendar unavailable');return calendarEvents.get(id)||null;},
+    createAllDayEvent:(title,date,config)=>{if(fail==='calendar'||fail==='calendar-permission')throw Error('calendar permission denied');const event=new CalendarEvent(title,date,config?.description);calendarEvents.set(event.id,event);return event;}
+  };
+  const CalendarApp={getDefaultCalendar:()=>{if(fail==='calendar-permission')throw Error('calendar permission denied');return calendar;},getCalendarById:id=>{if(fail==='calendar-permission')throw Error('calendar permission denied');return id==='missing'?null:calendar;}};
   if(options.existingDocument!==false&&!props.has('RENTAL_STATUS_DOCUMENT_ID'))props.set('RENTAL_STATUS_DOCUMENT_ID',docId);
   const c=vm.createContext({
     ContentService:{MimeType:{JSON:'json'},createTextOutput:s=>({setMimeType:()=>s})},
     Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(a,s)=>[...crypto.createHash('sha256').update(s).digest()],getUuid:()=>crypto.randomUUID(),formatDate:(date,_zone,format)=>format==='yyyy-MM-dd'?date.toISOString().slice(0,10):date.toISOString().replace('T',' ').slice(0,19)},
-    LockService:{getScriptLock:()=>({tryLock:()=>!held&&(held=true),releaseLock:()=>{held=false;}})},SpreadsheetApp:{getActiveSpreadsheet:()=>book,flush:()=>{}},DocumentApp,DriveApp,
+    LockService:{getScriptLock:()=>({tryLock:()=>!held&&(held=true),releaseLock:()=>{held=false;}})},SpreadsheetApp:{getActiveSpreadsheet:()=>book,flush:()=>{}},DocumentApp,DriveApp,CalendarApp,
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key)??null,setProperty:(key,value)=>props.set(key,value)})}
   });
-  for(const file of ['Billing.gs','CurrentStatus.gs','Code.gs'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../server',file),'utf8'),c,{filename:file});
+  for(const file of ['Billing.gs','CurrentStatus.gs','CalendarSync.gs','Code.gs'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../server',file),'utf8'),c,{filename:file});
   const get=()=>JSON.parse(c.doGet({})),post=req=>JSON.parse(c.doPost({postData:{contents:JSON.stringify(req)}}));
   const request=(data={tenants:[],bills:{}})=>({protocol:'rental-sync-v2',expectedRevision:get().revision,requestId:crypto.randomUUID(),data});
-  return {get,post,request,writes:()=>writes,backupRows,body,props,raw:()=>targetRows.map(row=>String(row[0]||'')).join(''),fail:value=>{fail=value;},hold:value=>{held=value;},corrupt:value=>{targetRows.splice(0,targetRows.length,[value]);}};
+  return {get,post,request,writes:()=>writes,backupRows,body,props,events:()=>[...calendarEvents.values()].map(event=>({...event})),raw:()=>targetRows.map(row=>String(row[0]||'')).join(''),fail:value=>{fail=value;},hold:value=>{held=value;},corrupt:value=>{targetRows.splice(0,targetRows.length,[value]);}};
 }
 
-test('GET is read-only and advertises conditional writes and current status',()=>{const s=server(),before=s.raw(),result=s.get();assert.equal(result.capabilities.conditionalWrite,true);assert.equal(result.capabilities.currentStatus,true);assert.equal(s.raw(),before);assert.equal(s.writes(),0);});
+test('GET is read-only and advertises conditional writes, current status and contract calendar',()=>{const s=server(),before=s.raw(),result=s.get();assert.equal(result.capabilities.conditionalWrite,true);assert.equal(result.capabilities.currentStatus,true);assert.equal(result.capabilities.contractCalendar,true);assert.equal(s.raw(),before);assert.equal(s.writes(),0);});
 test('save writes a complete recovery set and returns persisted revision and docs result',()=>{const s=server(),before=s.raw(),r=s.request({tenants:[],bills:{},expenses:{},historical:'preserve'}),ack=s.post(r);assert.equal(ack.status,'ok');assert.equal(ack.requestId,r.requestId);assert.equal(ack.docs.status,'ok');assert.equal(s.get().revision,ack.revision);assert.deepEqual(s.get().data,r.data);assert.equal(s.backupRows.map(row=>row[2]).join(''),before);assert.equal(s.backupRows[0][6],'rental-recovery-v2');});
 test('optional empty-floor operations round-trip without creating a tenant',()=>{const s=server(),data={tenants:[],bills:{},floorOperations:{5:{leaseStatus:'공실(정리중)'}}},ack=s.post(s.request(data));assert.equal(ack.status,'ok');assert.deepEqual(s.get().data,data);assert.equal(s.get().data.tenants.length,0);for(const floorOperations of [{6:{leaseStatus:'공실(정리중)'}},{5:{leaseStatus:'추정 상태'}}]){const invalid=server(),result=invalid.post(invalid.request({tenants:[],bills:{},floorOperations}));assert.equal(result.status,'error');assert.equal(invalid.writes(),0);}});
 test('two clients sharing a version allow exactly one write',()=>{const s=server(),a=s.request(),b=s.request();assert.equal(s.post(a).status,'ok');assert.equal(s.post(b).status,'conflict');assert.equal(s.writes(),1);});
@@ -65,6 +77,38 @@ test('77k+ payloads save in chunks and recovery retains the complete prior sourc
 test('Docs failure is reported separately and never rolls back a verified DB save',()=>{const s=server(),r=s.request({tenants:[],bills:{},marker:'saved'});s.fail('docs');const ack=s.post(r);assert.equal(ack.status,'ok');assert.equal(ack.docs.status,'error');assert.equal(s.get().data.marker,'saved');assert.equal(s.writes(),1);});
 test('manual status regeneration uses saved DB, preserves revision and does not write DB',()=>{const s=server(),remote=s.get(),before=s.raw(),ack=s.post({protocol:'rental-sync-v2',action:'regenerateCurrentStatus',expectedRevision:remote.revision,requestId:crypto.randomUUID()});assert.equal(ack.status,'ok');assert.equal(ack.revision,remote.revision);assert.equal(ack.docs.status,'ok');assert.equal(s.raw(),before);assert.equal(s.writes(),0);});
 test('stale manual regeneration conflicts and payload injection is rejected',()=>{const s=server(),base={protocol:'rental-sync-v2',action:'regenerateCurrentStatus',requestId:crypto.randomUUID()};assert.equal(s.post({...base,expectedRevision:'sha256-stale'}).status,'conflict');assert.equal(s.post({...base,expectedRevision:s.get().revision,data:{tenants:[],bills:{}}}).status,'error');});
+test('Calendar sync creates eligible contract events once and never mutates DB',()=>{
+  const data={tenants:[
+    {id:'t1',name:'김임차',biz:'가게',unit:'301호',leaseStatus:'재계약예정',contract:'2026/01/01 ~ 2026/12/31'},
+    {id:'t2',name:'공실',unit:'501호',leaseStatus:'공실(정리중)',contract:'2026/01/01 ~ 2026/11/30'},
+    {id:'t3',name:'날짜없음',unit:'201호',leaseStatus:'임대중',contract:''},
+    {id:'old',name:'과거',unit:'401호',archived:true,contract:'2025/01/01 ~ 2025/12/31'}
+  ],bills:{}};
+  const s=server({raw:JSON.stringify(data)}),remote=s.get(),before=s.raw();
+  const request=()=>({protocol:'rental-sync-v2',action:'syncContractCalendar',expectedRevision:remote.revision,requestId:crypto.randomUUID()});
+  const first=s.post(request());assert.equal(first.status,'ok');assert.deepEqual({created:first.calendar.created,updated:first.calendar.updated,skipped:first.calendar.skipped,total:first.calendar.total},{created:1,updated:0,skipped:2,total:1});
+  assert.equal(s.events().length,1);assert.match(s.events()[0].title,/3층 가게 계약 만료/);assert.equal(s.events()[0].date,'2026-12-31');
+  const second=s.post(request());assert.deepEqual({created:second.calendar.created,updated:second.calendar.updated},{created:0,updated:1});assert.equal(s.events().length,1);
+  assert.equal(s.raw(),before);assert.equal(s.writes(),0);
+});
+test('Calendar sync updates the same event after contract and identity changes',()=>{
+  const original={tenants:[{id:'t1',name:'이전이름',biz:'이전상호',unit:'201호',contract:'2026/01/01 ~ 2026/10/01'}],bills:{}};
+  const s=server({raw:JSON.stringify(original)}),firstRemote=s.get();
+  const sync=remote=>s.post({protocol:'rental-sync-v2',action:'syncContractCalendar',expectedRevision:remote.revision,requestId:crypto.randomUUID()});
+  assert.equal(sync(firstRemote).calendar.created,1);const eventId=s.events()[0].id;
+  const changed={tenants:[{...original.tenants[0],name:'새이름',biz:'새상호',contract:'2026/01/01 ~ 2027/01/15'}],bills:{}};
+  const save=s.post({...s.request(changed),data:changed});assert.equal(save.status,'ok');
+  const result=sync(s.get());assert.equal(result.calendar.updated,1);assert.equal(s.events().length,1);assert.equal(s.events()[0].id,eventId);assert.equal(s.events()[0].date,'2027-01-15');assert.match(s.events()[0].title,/새상호/);assert.match(s.events()[0].description,/새이름/);
+});
+test('Calendar permission and API failures are isolated from DB and reject stale or injected requests',()=>{
+  const data={tenants:[{id:'t1',name:'임차인',unit:'101호',contract:'2026/01/01 ~ 2026/12/31'}],bills:{}},s=server({raw:JSON.stringify(data)}),remote=s.get(),before=s.raw();
+  const base={protocol:'rental-sync-v2',action:'syncContractCalendar',requestId:crypto.randomUUID()};
+  assert.equal(s.post({...base,expectedRevision:'sha256-stale'}).status,'conflict');
+  assert.equal(s.post({...base,requestId:crypto.randomUUID(),expectedRevision:remote.revision,data}).status,'error');
+  for(const fault of ['calendar-permission','calendar']){s.fail(fault);const ack=s.post({...base,requestId:crypto.randomUUID(),expectedRevision:remote.revision});assert.equal(ack.status,'ok');assert.equal(ack.calendar.status,'error');assert.match(ack.calendar.message,/Calendar/);}
+  assert.equal(s.raw(),before);assert.equal(s.writes(),0);
+  s.fail('calendar-permission');const saved=s.post(s.request({...data,marker:'db-safe'}));assert.equal(saved.status,'ok');assert.equal(s.get().data.marker,'db-safe');
+});
 test('generated document replaces only marked region and preserves user text',()=>{const s=server(),r=s.request({tenants:[{id:'t1',name:'임차인',unit:'201호',payday:'15일',rent:100000,mgmt:10000}],bills:{}});assert.equal(s.post(r).docs.status,'ok');const values=s.body.children.map(child=>child.getText());assert.equal(values[0],'사용자 메모 위');assert.equal(values.at(-1),'사용자 메모 아래');assert.ok(values.includes('201호 · 임차인'));assert.ok(!values.includes('이전 자동 내용'));});
 test('current status omits archived historical tenants',()=>{const s=server(),r=s.request({tenants:[{id:'old',name:'이전 임차인',unit:'201호',archived:true}],bills:{}});assert.equal(s.post(r).docs.status,'ok');assert.ok(!s.body.children.some(child=>child.getText().includes('이전 임차인')));});
 test('missing configured document ID reports an error without creating a replacement',()=>{const s=server({properties:{RENTAL_STATUS_DOCUMENT_ID:'missing-doc'}}),ack=s.post(s.request());assert.equal(ack.status,'ok');assert.equal(ack.docs.status,'error');assert.equal(s.props.get('RENTAL_STATUS_DOCUMENT_ID'),'missing-doc');});

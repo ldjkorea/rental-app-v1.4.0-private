@@ -167,6 +167,19 @@
     if (!Number.isInteger(y)||y<1900||y>2200||!Number.isInteger(m)||m<1||m>12||!Number.isInteger(d)||d<1||d>new Date(y,m,0).getDate()) return '';
     return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   }
+  function contractEndDate(contract) {
+    const end=String(contract||'').split('~')[1]?.trim();
+    return dateISO(end||'');
+  }
+  function contractDeadline(contract, todayKey) {
+    const endDate=contractEndDate(contract),today=dateISO(todayKey||'');
+    if(!endDate||!today)return null;
+    const utc=value=>{const [y,m,d]=value.split('-').map(Number);return Date.UTC(y,m-1,d);};
+    const days=Math.round((utc(endDate)-utc(today))/86400000);
+    const label=days>0?`D-${days}`:days===0?'오늘 만료':`D+${Math.abs(days)} 경과`;
+    const level=days<0?'overdue':days<=30?'imminent':days<=45?'check':'none';
+    return {endDate,days,label,level};
+  }
   function period(day, year, month, span = 1) {
     day = Number(day);
     if (!Number.isInteger(day)||day<1||day>31) return '';
@@ -308,7 +321,7 @@
       totalUnpaid, lastPaymentDate, unknownDue, notDue, billCount};
   }
   root.RentalBilling = {won, withVat, floorOf, distribute, calculate, reconcile, charges, payment,
-    dateISO, period, dueDate, historicalPayment, arrears, itemKeys, naFields,
+    dateISO, contractEndDate, contractDeadline, period, dueDate, historicalPayment, arrears, itemKeys, naFields,
     materializeGroup, invalidateChangedPayments, freezeBill, effectiveTenant, collectionStatus};
   if (typeof module !== 'undefined') module.exports = root.RentalBilling;
 })(globalThis);

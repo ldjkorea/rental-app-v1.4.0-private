@@ -91,6 +91,34 @@ async function state(page) { return page.evaluate(() => currentData()); }
     assert.equal(await page.locator('.building-card').count(),0);assert.match(await page.locator('.building-empty').innerText(),/해당하는 층이 없습니다/);
     assert.deepEqual(errors,[]);await context.close();
   });
+  await run('contract attention uses Korea date thresholds and respects operating statuses without writes', async () => {
+    const end=days=>new Date(Date.UTC(2026,8,17+days)).toISOString().slice(0,10);
+    const make=(id,days,status='임대중',extra={})=>({id,name:'임차인 '+id,biz:'상호 '+id,unit:`${(Number(id.replace(/\D/g,''))%5)+1}01호`,rent:100000,payday:'10일',leaseStatus:status,contract:`2026/01/01 ~ ${end(days)}`,...extra});
+    const data={...core.empty(),tenants:[
+      make('d100',100),make('d45',45),make('d44',44),make('d30',30),make('d1',1),make('d0',0),make('late1',-1),
+      make('renewed',100,'임대중'),make('renew',18,'재계약예정'),make('ending',12,'계약종료예정'),
+      make('suit',-7,'명도소송중'),make('enforce',5,'강제집행중'),
+      make('vacant',-10,'공실(정리중)'),make('recruit',-10,'임대모집중')
+    ],bills:{}};
+    const {page,context,errors}=await pageFor(data);const before=JSON.stringify(await state(page));
+    const alerts=await page.evaluate(()=>contractAlerts('2026-09-17').map(item=>({id:item.tenant.id,days:item.deadline.days,label:item.deadline.label,level:item.deadline.level,reason:item.reason})));
+    assert.equal(alerts.some(item=>item.id==='d100'||item.id==='renewed'),false);
+    for(const [id,days,level,label] of [['d45',45,'check','D-45'],['d44',44,'check','D-44'],['d30',30,'imminent','D-30'],['d1',1,'imminent','D-1'],['d0',0,'imminent','오늘 만료'],['late1',-1,'overdue','D+1 경과']]){
+      const item=alerts.find(alert=>alert.id===id);assert.deepEqual({days:item.days,level:item.level,label:item.label},{days,level,label});
+    }
+    assert.match(alerts.find(item=>item.id==='renew').reason,/재계약 확인 필요/);
+    assert.match(alerts.find(item=>item.id==='ending').reason,/계약 종료 확인 필요/);
+    assert.match(alerts.find(item=>item.id==='suit').reason,/명도소송 진행 확인/);
+    assert.match(alerts.find(item=>item.id==='enforce').reason,/강제집행 진행 확인/);
+    assert.equal(alerts.some(item=>item.id==='vacant'||item.id==='recruit'),false);
+    await page.evaluate(()=>{switchTab('building');renderBuildingOperations(new Date('2026-09-16T15:30:00.000Z'));});
+    assert.equal(await page.locator('.attention-item').count(),alerts.length);
+    assert.match(await page.locator('#building-attention-list').innerText(),/오늘 만료/);
+    await page.screenshot({path:path.join(out,'phase3-building-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(out,'phase3-building-mobile.png'),fullPage:true});
+    assert.equal(JSON.stringify(await state(page)),before);assert.deepEqual(errors,[]);await context.close();
+  });
   await run('bill edits retain amounts across NA switches and preserve existing metadata', async () => {
     const {page, context, errors} = await pageFor();
     await page.evaluate(() => { bills[mk()] = {t1: {rent: 900000, customField: 'preserve', stampedRent: true, stampedRentDate: '09/01'}}; goToHistory('t1'); });
@@ -307,6 +335,20 @@ async function state(page) { return page.evaluate(() => currentData()); }
     assert.equal(posted.action,'regenerateCurrentStatus');assert.equal(Object.hasOwn(posted,'data'),false);
     assert.match(await page.locator('#current-status-notice').innerText(),/갱신 완료/);
     assert.match(await page.locator('#current-status-notice a').getAttribute('href'),/doc_test_1/);
+    assert.deepEqual(errors,[]);await context.close();
+  });
+  await run('Calendar sync uses saved server revision, sends no tenant payload and reports failures separately', async () => {
+    const data={...sample(),localMeta:{cloudPending:false,cloudBaseRevision:'r1'}};
+    const {page,context,errors}=await pageFor(data);let posted,calendarFails=false;
+    await context.route('https://script.google.com/**',async route=>{
+      if(route.request().method()==='GET')return route.fulfill({json:{status:'ok',data:sample(),revision:'r1',capabilities:{conditionalWrite:true,currentStatus:true,contractCalendar:true}}});
+      posted=JSON.parse(route.request().postData());return route.fulfill({json:{status:'ok',revision:'r1',requestId:posted.requestId,capabilities:{conditionalWrite:true,currentStatus:true,contractCalendar:true},calendar:calendarFails?{status:'error',message:'권한 테스트 실패'}:{status:'ok',created:2,updated:1,skipped:1}}});
+    });
+    await page.evaluate(()=>{cloudEnabled=true;document.getElementById('cloud-enabled').checked=true;return syncContractCalendar();});
+    assert.equal(posted.action,'syncContractCalendar');assert.equal(Object.hasOwn(posted,'data'),false);
+    assert.match(await page.locator('#calendar-sync-notice').innerText(),/생성 2건 · 갱신 1건 · 제외 1건/);
+    calendarFails=true;await page.evaluate(()=>syncContractCalendar());
+    assert.match(await page.locator('#calendar-sync-notice').innerText(),/권한 테스트 실패/);
     assert.deepEqual(errors,[]);await context.close();
   });
   await run('Docs failure warns separately after the DB save acknowledgement', async () => {

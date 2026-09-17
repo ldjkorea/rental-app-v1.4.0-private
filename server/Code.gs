@@ -1,7 +1,7 @@
 /* rental-sync-v2: keep the existing deployment and its access settings. */
 var SYNC_FORMAT = 'rental-sync-storage-v2';
 var LEASE_STATUSES = ['임대중','재계약예정','계약종료예정','명도소송중','강제집행중','공실(정리중)','임대모집중'];
-function capabilities_() { return {conditionalWrite:true, currentStatus:true}; }
+function capabilities_() { return {conditionalWrite:true, currentStatus:true, contractCalendar:true}; }
 function json_(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -122,6 +122,11 @@ function currentStatusResult_(state) {
       message:'현재현황 문서 갱신 실패: ' + String(err.message || err)};
   }
 }
+function contractCalendarResult_(state) {
+  // Calendar permission/API errors never alter or roll back rental DB data.
+  try { return syncContractCalendar_(state.data, state.revision); }
+  catch (err) { return {status:'error', message:'Google Calendar 동기화 실패: ' + String(err.message || err)}; }
+}
 function doPost(e) {
   return locked_(function() {
     var req = JSON.parse(e && e.postData && e.postData.contents || '{}');
@@ -134,6 +139,11 @@ function doPost(e) {
       if (Object.prototype.hasOwnProperty.call(req, 'data')) return {status:'error', message:'현재현황 재생성은 저장된 DB만 사용합니다.'};
       if (req.expectedRevision !== state.revision) return {status:'conflict', message:'다른 기기에서 변경된 자료입니다. 다시 불러온 뒤 현재현황을 생성해주세요.'};
       return {status:'ok', revision:state.revision, requestId:req.requestId, capabilities:capabilities_(), docs:currentStatusResult_(state)};
+    }
+    if (req.action === 'syncContractCalendar') {
+      if (Object.prototype.hasOwnProperty.call(req, 'data')) return {status:'error', message:'Calendar 동기화는 저장된 DB만 사용합니다.'};
+      if (req.expectedRevision !== state.revision) return {status:'conflict', message:'다른 기기에서 변경된 자료입니다. 다시 불러온 뒤 Calendar를 동기화해주세요.'};
+      return {status:'ok', revision:state.revision, requestId:req.requestId, capabilities:capabilities_(), calendar:contractCalendarResult_(state)};
     }
     if (req.action !== undefined && req.action !== 'save') return {status:'unsupported', message:'지원하지 않는 동기화 작업입니다.'};
     validate_(req.data);

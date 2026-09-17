@@ -365,6 +365,31 @@ function showCurrentStatusResult(report, dbSaved = false) {
     link.textContent=' 현황 문서 열기';link.target='_blank';link.rel='noopener noreferrer';notice.appendChild(link);
   }
 }
+function showCalendarSyncResult(report) {
+  const notice=document.getElementById('calendar-sync-notice');if(!notice)return;
+  notice.hidden=false;const success=report?.status==='ok';notice.dataset.state=success?'ok':'error';
+  notice.textContent=success
+    ?`Calendar 동기화 완료 · 생성 ${report.created||0}건 · 갱신 ${report.updated||0}건 · 제외 ${report.skipped||0}건`
+    :'Calendar를 동기화하지 못했습니다. '+(report?.message||'Google Calendar 권한과 설정을 확인해주세요.');
+}
+async function syncContractCalendar() {
+  if(isDemo){showToast('예시 모드에서는 Calendar를 변경하지 않습니다.');return;}
+  if(!cloudEnabled){showToast('구글 동기화를 먼저 켜주세요.');return;}
+  if(syncBusy||persistenceBusy||storageFault||conflictingTab){showToast('저장 상태를 확인한 뒤 다시 시도해주세요.');return;}
+  if(cloudDirty){showToast('현재 변경 내용을 구글에 저장한 뒤 Calendar를 동기화해주세요.');return;}
+  if(!navigator.onLine){showToast('인터넷 연결 후 다시 시도해주세요.');return;}
+  const button=document.getElementById('sync-contract-calendar');clearTimeout(saveTimer);syncBusy=true;if(button)button.disabled=true;
+  try {
+    assertCurrentStorage();const remote=await cloudRequest();
+    if(!supportsSafeSync(remote)||remote.capabilities?.contractCalendar!==true)throw new Error('서버의 Calendar 동기화 기능을 먼저 설정해주세요.');
+    if(!cloudBaseRevision||remote.revision!==cloudBaseRevision)throw new Error('서버 자료가 변경됐습니다. 최신 자료를 불러온 후 다시 동기화해주세요.');
+    const requestId=crypto.randomUUID();
+    const result=await cloudRequest({method:'POST',body:JSON.stringify({protocol:'rental-sync-v2',action:'syncContractCalendar',expectedRevision:remote.revision,requestId})});
+    if(result.requestId!==requestId||result.revision!==remote.revision)throw new Error('Calendar 동기화 결과의 기준 자료를 확인하지 못했습니다.');
+    showCalendarSyncResult(result.calendar);
+  } catch(error) {showCalendarSyncResult({status:'error',message:error.message});}
+  finally {syncBusy=false;if(button)button.disabled=false;if(cloudDirty&&cloudEnabled)saveTimer=setTimeout(doSync,2000);}
+}
 async function regenerateCurrentStatus() {
   if(isDemo){showToast('예시 모드에서는 현황 문서를 생성하지 않습니다.');return;}
   if(!cloudEnabled){showToast('구글 동기화를 먼저 켜주세요.');return;}
@@ -593,14 +618,39 @@ const BUILDING_FILTERS={
   overdue:row=>row.collections.some(collection=>collection.status!=='정상'),
 };
 let buildingFilter='all';
+function koreaDateKey(asOf=new Date()) {
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(asOf);
+  const get=type=>parts.find(part=>part.type===type)?.value||'';return `${get('year')}-${get('month')}-${get('day')}`;
+}
 function contractRemaining(contract, asOf=new Date()) {
-  const end=String(contract||'').split('~')[1]?.trim(),iso=RentalBilling.dateISO(end||'');
-  if(!iso)return '해당없음';
-  const [y,m,d]=iso.split('-').map(Number),today=new Date(asOf.getFullYear(),asOf.getMonth(),asOf.getDate());
-  const days=Math.round((new Date(y,m-1,d)-today)/86400000);
-  if(days<0)return `계약만료 · ${Math.abs(days)}일 경과`;
-  if(days===0)return '오늘 계약만료';
-  return `계약만료까지 ${days}일`;
+  const deadline=RentalBilling.contractDeadline(contract,koreaDateKey(asOf));
+  if(!deadline)return '해당없음';
+  if(deadline.days<0)return `계약만료 · ${Math.abs(deadline.days)}일 경과`;
+  if(deadline.days===0)return '오늘 계약만료';
+  return `계약만료까지 ${deadline.days}일`;
+}
+function contractAlertReason(tenant,deadline) {
+  const status=RentalCore.leaseStatus(tenant);
+  if(!deadline||deadline.level==='none'||['공실(정리중)','임대모집중'].includes(status))return '';
+  if(status==='재계약예정')return deadline.days<0?'재계약 기한 경과':'재계약 확인 필요';
+  if(status==='계약종료예정')return deadline.days<0?'계약 종료기한 경과':'계약 종료 확인 필요';
+  if(status==='명도소송중')return deadline.days<0?'계약기한 경과 · 명도소송 진행 확인':'계약 만료 · 명도소송 진행 확인';
+  if(status==='강제집행중')return deadline.days<0?'계약기한 경과 · 강제집행 진행 확인':'계약 만료 · 강제집행 진행 확인';
+  return deadline.level==='overdue'?'계약기한 경과':deadline.level==='imminent'?'계약 만료 임박':'계약 확인 필요';
+}
+function contractAlerts(todayKey=koreaDateKey()) {
+  return activeTenants().map(tenant=>{
+    const deadline=RentalBilling.contractDeadline(tenant.contract,todayKey),reason=contractAlertReason(tenant,deadline);
+    return reason?{tenant,floor:getFloor(tenant.unit),deadline,reason}:null;
+  }).filter(Boolean).sort((a,b)=>a.deadline.days-b.deadline.days||a.floor-b.floor);
+}
+function renderContractAlerts(asOf=new Date()) {
+  const list=document.getElementById('building-attention-list');if(!list)return;
+  const alerts=contractAlerts(koreaDateKey(asOf));
+  list.innerHTML=alerts.length?alerts.map(item=>`<div class="attention-item ${item.deadline.level}">
+    <div><strong>${item.floor?item.floor+'층':'층 미확인'} · ${esc(item.tenant.biz||item.tenant.name||'-')}</strong><span>${esc(item.reason)}</span></div>
+    <div class="attention-date"><time datetime="${item.deadline.endDate}">${item.deadline.endDate}</time><strong>${esc(item.deadline.label)}</strong></div>
+  </div>`).join(''):'<div class="attention-empty">현재 확인할 계약 일정 없음</div>';
 }
 function buildingRows(asOf=new Date()) {
   return [1,2,3,4,5].map(floor=>{
@@ -626,13 +676,14 @@ function buildingStatusClass(status) {
   if(status==='해당없음'||status==='-')return 'is-empty';
   return 'is-alert';
 }
-function renderBuildingOperations() {
+function renderBuildingOperations(asOf=new Date()) {
   const list=document.getElementById('building-floor-list');if(!list)return;
+  renderContractAlerts(asOf);
   document.querySelectorAll('#building-filters button').forEach(button=>{
     const selected=button.dataset.filter===buildingFilter;
     button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));
   });
-  const rows=buildingRows().filter(BUILDING_FILTERS[buildingFilter]);
+  const rows=buildingRows(asOf).filter(BUILDING_FILTERS[buildingFilter]);
   if(!rows.length){list.innerHTML='<div class="empty building-empty">선택한 조건에 해당하는 층이 없습니다.</div>';return;}
   list.innerHTML=rows.map(row=>{
     const clickable=row.occupants.length===1;
@@ -644,7 +695,7 @@ function renderBuildingOperations() {
           <div><dt>임대상태</dt><dd><span class="building-status ${buildingStatusClass(RentalCore.leaseStatus(tenant))}">${esc(RentalCore.leaseStatus(tenant))}</span></dd></div>
           <div><dt>자동 수납상태</dt><dd><span class="building-status ${buildingStatusClass(collection.status)}">${esc(collection.status)}</span></dd></div>
           <div><dt>계약기간</dt><dd>${esc(tenant.contract||'-')}</dd></div>
-          <div><dt>계약만료</dt><dd>${esc(contractRemaining(tenant.contract))}</dd></div>
+          <div><dt>계약만료</dt><dd>${esc(contractRemaining(tenant.contract,asOf))}</dd></div>
           <div><dt>월차임</dt><dd>${tenant.rent==null||tenant.rent===''?'-':fmt(tenant.rent)}</dd></div>
           <div><dt>총 미납금액</dt><dd>${fmt(collection.totalUnpaid)}</dd></div>
         </dl>
