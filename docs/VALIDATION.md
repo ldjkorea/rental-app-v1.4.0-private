@@ -17,7 +17,7 @@
 
 계약 종료 100일, 45일, 44일, 30일, 1일, 당일, 1일 경과와 갱신된 현재 계약을 고정 날짜로 검사했습니다. 재계약·계약종료·명도소송·강제집행 문구, 공실·모집중 경고 억제, 조회 전후 데이터 불변, 모바일 가로 넘침과 콘솔 오류 0건도 확인했습니다. Calendar 검사는 mock만 사용했으며 실제 운영 일정은 생성·수정·삭제하지 않았습니다. 세부 구조와 배포 전 확인사항은 [CONTRACT_ALERT_CALENDAR_PHASE3.md](CONTRACT_ALERT_CALENDAR_PHASE3.md)에 기록했습니다.
 
-사용자 승인 후 `main`, Apps Script 버전 6, 소유자 전용 Sites 버전 5를 운영 반영했습니다. Apps Script 연속 GET의 revision과 전체 응답 해시가 일치했고 `contractCalendar=true`를 확인했습니다. 운영 Sites의 390×844 브라우저 검증도 통과했으며 운영 DB POST와 실제 Calendar 일정 생성·갱신·삭제는 실행하지 않았습니다.
+사용자 승인 후 `main`, Apps Script 버전 6, 소유자 전용 Sites 버전 5를 운영 반영했습니다. Apps Script 연속 GET의 revision과 전체 응답 해시가 일치했고 `contractCalendar=true`를 확인했습니다. 운영 Sites의 390×844 브라우저 검증도 통과했습니다. 별도 Calendar 적용 승인 후 실제 계약 일정 4건을 생성했으며, 동일 자료 재동기화는 `created=0`, `updated=4`로 기존 event만 갱신했습니다. 두 실행 전후 운영 DB revision과 임차인 수는 같았고 일정 삭제는 수행하지 않았습니다.
 
 ## 건물 운영현황 2차 개발 — 2026-09-17
 
