@@ -34,3 +34,18 @@ tenant ID와 Google Calendar event ID의 연결은 Script Properties의 `RENTAL_
 4. 기존 소유자 전용 Sites 프로젝트에 생성된 `index.html`을 배포합니다.
 5. 운영 DB GET으로 revision을 확인하고, 실제 생성·갱신 예정 일정을 검토한 뒤 별도 승인 후 `Google Calendar 동기화`를 한 번 실행합니다.
 6. 문제가 있으면 Apps Script 버전 5와 Sites 버전 4로 되돌리고 Git tag `backup/phase2-complete-20260917`을 기준으로 복구합니다. Calendar 일정은 자동 삭제하지 않으므로 필요한 경우 생성·갱신된 일정만 Calendar에서 직접 확인합니다.
+
+## 운영 반영 결과
+
+사용자 승인 후 `main`을 `bcfd55f`로 fast-forward하고 기존 Apps Script 웹 앱 배포를 버전 6 `계약기한 경고·Calendar 연동 3차 개발_2026-09-17`로 갱신했습니다. 기존 배포 ID, URL, 실행 계정, 접근 설정은 유지했습니다. 연속 GET 두 번에서 HTTP 200, `status=ok`, 동일 revision과 동일 전체 응답 해시, `contractCalendar=true`, 임차인 4명을 확인했습니다. POST와 Calendar 호출은 실행하지 않았습니다.
+
+기존 소유자 전용 Sites 프로젝트에는 원격 `main`의 `bcfd55f`와 일치하는 정적 아카이브를 버전 5로 저장해 배포했습니다. 배포 ID `appgdep_6aabee7eed88819191432f600017e308`은 `succeeded`이며 기존 HTTPS 주소와 소유자 전용 접근 정책을 유지했습니다. 운영 URL의 390×844 격리 브라우저에서 확인 필요 영역, Calendar 버튼, 메뉴 6개, 1~5층 순서, 데이터 불변, 가로 넘침 없음과 콘솔 오류 0건을 확인했습니다. Google 요청은 GET 한 번뿐이었습니다.
+
+실제 Calendar 쓰기 전 미리보기 대상은 현재 저장 DB 기준 4건입니다. 이 목록은 운영 데이터가 바뀌면 달라질 수 있으므로 실제 실행 직전에 다시 읽어 확인합니다.
+
+- `[임대관리] 1층 심야잡화점 계약 만료` — 2027-05-08
+- `[임대관리] 2층 타키 노원역점 계약 만료` — 2027-02-14
+- `[임대관리] 3층 오술차 노원점 계약 만료` — 2026-10-19
+- `[임대관리] 4층 문 바 노원점 계약 만료` — 2027-02-09
+
+실제 Calendar 일정 생성·갱신·삭제는 수행하지 않았습니다. Calendar 권한과 실제 event 동작은 별도 승인 후 첫 수동 동기화에서 확인합니다.

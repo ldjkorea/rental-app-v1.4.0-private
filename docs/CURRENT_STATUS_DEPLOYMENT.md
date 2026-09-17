@@ -49,3 +49,12 @@ Apps Script 프로젝트에는 `server/Code.gs`, `server/Billing.gs`, `server/Cu
 - Apps Script 연속 GET 두 번에서 상태 `ok`, 동일 revision, 동일 응답 SHA-256을 확인했다. 운영 DB POST와 migration은 실행하지 않았다.
 - 운영 Sites 390×844 격리 브라우저에서 임차인 4명을 GET으로 불러와 메뉴 6개, 1~5층 순서, 5층 `공실(정리중)`, 필터 무변경, 가로 넘침 없음과 콘솔 오류 0건을 확인했다.
 - 롤백 기준은 Git `backup/phase1-complete-20260917`, Apps Script 버전 4, Sites 버전 3이다.
+
+## 3차 계약기한 경고·Calendar 연동 운영 반영 결과
+
+- Git `backup/phase2-complete-20260917`에서 `work/contract-alert-calendar-phase3-20260917`을 만들고 검증한 `bcfd55f`를 `main`에 fast-forward했다.
+- 기존 웹 앱 배포 ID와 URL을 유지한 채 Apps Script 버전 6 `계약기한 경고·Calendar 연동 3차 개발_2026-09-17`로 갱신했다.
+- Apps Script 연속 GET 두 번에서 HTTP 200, `status=ok`, 동일 revision, 동일 응답 SHA-256, `contractCalendar=true`를 확인했다. 운영 DB POST와 Calendar 동기화는 실행하지 않았다.
+- 기존 소유자 전용 Sites 프로젝트의 접근 정책과 HTTPS 주소를 유지한 채 버전 5를 배포했다. 배포 ID는 `appgdep_6aabee7eed88819191432f600017e308`이며 최종 상태는 `succeeded`다.
+- 운영 Sites 390×844 격리 브라우저에서 확인 필요 영역, Calendar 버튼, 메뉴 6개, 1~5층, 데이터 불변, 가로 넘침 없음, 콘솔 오류 0건을 확인했다. Google 요청은 GET 한 번뿐이었다.
+- 롤백 기준은 Git `backup/phase2-complete-20260917`, Apps Script 버전 5, Sites 버전 4다.
