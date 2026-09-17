@@ -25,8 +25,8 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=r
  await page.locator('#nav-tenants').click();await page.locator('#tenant-search').fill('온유');assert.equal(await page.locator('#tenant-list .t-item').count(),1);
  const download=page.waitForEvent('download');await page.evaluate(()=>exportMonthCsv());const file=await download;assert.ok(file.suggestedFilename().endsWith('.csv'));
  await page.setViewportSize({width:390,height:844});
- for(const tab of ['home','tenants','history','settlement','settings']){await page.locator('#nav-'+tab).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),tab+' overflow');}
+ for(const tab of ['home','building','tenants','history','settlement','settings']){await page.locator('#nav-'+tab).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),tab+' overflow');}
  await page.locator('#nav-home').click();await page.screenshot({path:'test-results/v2-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);assert.equal(cloud.filter(x=>x.includes('script.google')).length,0);
- await browser.close();fs.writeFileSync('test-results/v2-results.json',JSON.stringify({status:'pass',checks:['isolated demo','exact costs','manual reconciliation','dated stamps','consistent message','draft recovery','search','csv','mobile layout','no runtime errors']}));console.log('PASS V2: demo, allocation, dates, messages, drafts, search, CSV, 5 mobile tabs');
+ await browser.close();fs.writeFileSync('test-results/v2-results.json',JSON.stringify({status:'pass',checks:['isolated demo','exact costs','manual reconciliation','dated stamps','consistent message','draft recovery','search','csv','mobile layout','no runtime errors']}));console.log('PASS V2: demo, allocation, dates, messages, drafts, search, CSV, 6 mobile tabs');
 })().catch(e=>{console.error(e);process.exit(1)});

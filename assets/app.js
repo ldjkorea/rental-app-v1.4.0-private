@@ -30,7 +30,7 @@ if(isDemo) {
 let loadedState;
 try { loadedState = RentalCore.load(appStorage); }
 catch (error) { loadedState = {data: RentalCore.empty(), error}; }
-let {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio} = loadedState.data;
+let {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations} = loadedState.data;
 let storageFault = loadedState.error;
 let conflictingTab = false;
 let revision = 0;
@@ -269,9 +269,9 @@ function historyTenants() {
 }
 let saveTimer=null;
 
-function currentData() { return {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio}; }
+function currentData() { return {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations}; }
 function assignData(data) {
-  ({tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio} = data);
+  ({tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations} = data);
   selTenantId = null;
   settCalcResult = null;
   revision++;
@@ -323,7 +323,7 @@ async function save() {
     return true;
   } catch(error) {
     failedSaveData=candidate;
-    ({tenants,bills,loans,expenses,renewalDone,settInputs,waterRatio}=JSON.parse(JSON.stringify(lastCommitted)));
+    ({tenants,bills,loans,expenses,renewalDone,settInputs,waterRatio,floorOperations}=JSON.parse(JSON.stringify(lastCommitted)));
     storageFault=error;
     syncUI('localError');renderAll();
     showDataNotice('저장하지 못해 직전 저장 상태를 유지했습니다. '+error.message+' 입력 내용은 백업 버튼으로 내보낼 수 있습니다.');
@@ -556,11 +556,11 @@ function applyMonthPicker(){
 /* ════════════════════════════════════════
    탭 전환
 ════════════════════════════════════════ */
-const TABS=['home','history','tenants','settlement','settings'];
+const TABS=['home','building','history','tenants','settlement','settings'];
 function switchTab(tab){
   if(typeof flushBillDraft==='function')flushBillDraft();
   document.body.dataset.tab=tab;
-  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',settings:'설정과 데이터'})[tab];
+  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',building:'건물 운영현황',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',settings:'설정과 데이터'})[tab];
   const pill=document.querySelector('.pill-nav');
   const hdr=document.getElementById('main-header');
   const deco=document.getElementById('home-deco');
@@ -576,11 +576,93 @@ function switchTab(tab){
   });
 
   if(tab==='home')renderHome();
+  if(tab==='building')renderBuildingOperations();
   if(tab==='settlement')renderSettTab();
   if(tab==='history'){renderHistChips();if(selTenantId)renderHistContent();}
   TABS.forEach(t=>document.getElementById('nav-'+t)?.setAttribute('aria-current', t===tab?'page':'false'));
 }
-function renderAll(){renderHome();renderTenants();renderLoanList();renderExpenseList();}
+function renderAll(){renderHome();renderBuildingOperations();renderTenants();renderLoanList();renderExpenseList();}
+
+/* ════════════════════════════════════════
+   건물 운영현황 — 기존 tenant/bills 계산 결과의 읽기 전용 투영
+════════════════════════════════════════ */
+const BUILDING_FILTERS={
+  all:()=>true,
+  active:row=>row.leaseStatuses.some(status=>['명도소송중','강제집행중','공실(정리중)','임대모집중'].includes(status)),
+  waiting:row=>row.leaseStatuses.some(status=>['재계약예정','계약종료예정'].includes(status)),
+  overdue:row=>row.collections.some(collection=>collection.status!=='정상'),
+};
+let buildingFilter='all';
+function contractRemaining(contract, asOf=new Date()) {
+  const end=String(contract||'').split('~')[1]?.trim(),iso=RentalBilling.dateISO(end||'');
+  if(!iso)return '해당없음';
+  const [y,m,d]=iso.split('-').map(Number),today=new Date(asOf.getFullYear(),asOf.getMonth(),asOf.getDate());
+  const days=Math.round((new Date(y,m-1,d)-today)/86400000);
+  if(days<0)return `계약만료 · ${Math.abs(days)}일 경과`;
+  if(days===0)return '오늘 계약만료';
+  return `계약만료까지 ${days}일`;
+}
+function buildingRows(asOf=new Date()) {
+  return [1,2,3,4,5].map(floor=>{
+    const occupants=activeTenants().filter(tenant=>getFloor(tenant.unit)===floor);
+    const collections=occupants.map(tenant=>RentalBilling.collectionStatus(tenant,bills,asOf));
+    const leaseStatuses=occupants.length
+      ?occupants.map(tenant=>RentalCore.leaseStatus(tenant))
+      :[floorOperations?.[floor]?.leaseStatus||(floor===5?'공실(정리중)':'-')];
+    return {floor,occupants,collections,leaseStatuses};
+  });
+}
+function setBuildingFilter(filter) {
+  if(!Object.hasOwn(BUILDING_FILTERS,filter))return;
+  buildingFilter=filter;renderBuildingOperations();
+}
+function openBuildingTenant(id) {
+  const tenant=activeTenants().find(item=>item.id===id);if(!tenant)return;
+  switchTab('tenants');editTenant(id);
+}
+function buildingStatusClass(status) {
+  if(status==='정상'||status==='임대중')return 'is-ok';
+  if(status==='재계약예정'||status==='계약종료예정')return 'is-waiting';
+  if(status==='해당없음'||status==='-')return 'is-empty';
+  return 'is-alert';
+}
+function renderBuildingOperations() {
+  const list=document.getElementById('building-floor-list');if(!list)return;
+  document.querySelectorAll('#building-filters button').forEach(button=>{
+    const selected=button.dataset.filter===buildingFilter;
+    button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));
+  });
+  const rows=buildingRows().filter(BUILDING_FILTERS[buildingFilter]);
+  if(!rows.length){list.innerHTML='<div class="empty building-empty">선택한 조건에 해당하는 층이 없습니다.</div>';return;}
+  list.innerHTML=rows.map(row=>{
+    const clickable=row.occupants.length===1;
+    const details=row.occupants.length?row.occupants.map((tenant,index)=>{
+      const collection=row.collections[index];
+      return `<div class="building-tenant">
+        <div class="building-identity"><strong>${esc(tenant.name||'-')}</strong><span>${esc(tenant.biz||'-')}</span></div>
+        <dl class="building-fields">
+          <div><dt>임대상태</dt><dd><span class="building-status ${buildingStatusClass(RentalCore.leaseStatus(tenant))}">${esc(RentalCore.leaseStatus(tenant))}</span></dd></div>
+          <div><dt>자동 수납상태</dt><dd><span class="building-status ${buildingStatusClass(collection.status)}">${esc(collection.status)}</span></dd></div>
+          <div><dt>계약기간</dt><dd>${esc(tenant.contract||'-')}</dd></div>
+          <div><dt>계약만료</dt><dd>${esc(contractRemaining(tenant.contract))}</dd></div>
+          <div><dt>월차임</dt><dd>${tenant.rent==null||tenant.rent===''?'-':fmt(tenant.rent)}</dd></div>
+          <div><dt>총 미납금액</dt><dd>${fmt(collection.totalUnpaid)}</dd></div>
+        </dl>
+      </div>`;
+    }).join(''):`<div class="building-tenant building-vacant">
+      <div class="building-identity"><strong>-</strong><span>현재 임차인 없음</span></div>
+      <dl class="building-fields">
+        <div><dt>임대상태</dt><dd><span class="building-status ${buildingStatusClass(row.leaseStatuses[0])}">${esc(row.leaseStatuses[0])}</span></dd></div>
+        <div><dt>자동 수납상태</dt><dd>해당없음</dd></div><div><dt>계약기간</dt><dd>해당없음</dd></div>
+        <div><dt>계약만료</dt><dd>해당없음</dd></div><div><dt>월차임</dt><dd>해당없음</dd></div><div><dt>총 미납금액</dt><dd>해당없음</dd></div>
+      </dl>
+    </div>`;
+    const action=clickable?` role="button" tabindex="0" aria-label="${row.floor}층 임차인 수정 열기" onclick="openBuildingTenant('${row.occupants[0].id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openBuildingTenant('${row.occupants[0].id}')}"`:'';
+    return `<article class="building-card${clickable?' is-clickable':''}" data-floor="${row.floor}"${action}>
+      <div class="building-floor"><span>${row.floor}</span><small>층</small></div><div class="building-card-body">${details}</div>
+    </article>`;
+  }).join('');
+}
 
 /* ════════════════════════════════════════
    민감정보 토글

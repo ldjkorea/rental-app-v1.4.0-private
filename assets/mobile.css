@@ -58,8 +58,18 @@
   .result-tbl { min-width:600px; }
   .data-notice, .reconcile, .reconcile-details { overflow-wrap:anywhere; }
   .step-row { padding:16px 12px; }
+  .building-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .building-filters button { min-width:0; padding:8px 4px; }
+  .building-card { grid-template-columns:48px minmax(0,1fr); gap:12px; padding:17px 14px; }
+  .building-floor span { font-size:25px; }
+  .building-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .building-identity { flex-wrap:wrap; margin-bottom:13px; }
 }
 @media screen and (max-width: 420px) {
   .field-row { grid-template-columns:1fr; }
   .charge-row { grid-template-columns:minmax(0,1fr) minmax(90px,auto); }
+  .pill-item { gap:3px; padding-left:1px; padding-right:1px; }
+  .pill-item svg { width:19px; height:19px; }
+  .pill-item .pi-label { font-size:9px; letter-spacing:-.2px; }
+  .building-fields { grid-template-columns:1fr; }
 }

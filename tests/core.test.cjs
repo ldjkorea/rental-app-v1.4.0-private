@@ -10,6 +10,15 @@ function storage(initial = {}) {
 test('legacy backups receive independent defaults for absent collections', () => {
   const value = core.validateData({tenants: [], bills: {}});
   assert.deepEqual(value, core.empty());
+  assert.deepEqual(value.floorOperations, {5: {leaseStatus: '공실(정리중)'}});
+  assert.equal(value.tenants.length, 0);
+});
+test('optional floor operations preserve empty-floor status without fake tenants', () => {
+  const value = core.validateData({tenants: [], bills: {}, floorOperations: {5: {leaseStatus: '공실(정리중)'}}});
+  assert.deepEqual(value.floorOperations, {5: {leaseStatus: '공실(정리중)'}});
+  assert.deepEqual(value.tenants, []);
+  assert.throws(() => core.validateData({tenants: [], bills: {}, floorOperations: {6: {leaseStatus: '공실(정리중)'}}}));
+  assert.throws(() => core.validateData({tenants: [], bills: {}, floorOperations: {5: {leaseStatus: '추정 상태'}}}));
 });
 test('reads legacy browser keys without rewriting them', () => {
   const data = fixture(); const s = storage({tenants: JSON.stringify(data.tenants)});

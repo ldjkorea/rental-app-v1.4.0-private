@@ -42,17 +42,54 @@ async function state(page) { return page.evaluate(() => currentData()); }
   await run('home, navigation, desktop/mobile layout and script health', async () => {
     const {page, context, errors} = await pageFor();
     assert.equal(await page.locator('#home-bill-list .t-item').count(), 2);
-    for (const tab of ['tenants', 'history', 'settlement', 'settings', 'home']) {
+    for (const tab of ['building', 'tenants', 'history', 'settlement', 'settings', 'home']) {
       await page.locator('#nav-' + tab).click(); assert.ok(await page.locator('#section-' + tab).isVisible());
     }
     await page.screenshot({path: path.join(out, 'desktop.png'), fullPage: true});
     await page.setViewportSize({width: 390, height: 844});
-    for (const tab of ['home', 'tenants', 'settings']) {
+    for (const tab of ['home', 'building', 'tenants', 'settings']) {
       await page.locator('#nav-' + tab).click();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     }
     await page.locator('#nav-home').click(); await page.screenshot({path: path.join(out, 'mobile.png'), fullPage: true});
     assert.deepEqual(errors, []); await context.close();
+  });
+  await run('building operations reuses saved status and billing calculations without data writes', async () => {
+    const data={...core.empty(),floorOperations:{5:{leaseStatus:'공실(정리중)'}},tenants:[
+      {id:'f1',name:'일층 임차인',biz:'일층 상호',unit:'101호',leaseStatus:'임대중',rent:100000,payday:'10일',contract:'2026/01/01 ~ 2026/09/17'},
+      {id:'f2',name:'이층 임차인',biz:'이층 상호',unit:'201호',leaseStatus:'재계약예정',rent:200000,mgmt:10000,payday:'10일',contract:'2026/01/01 ~ 2026/10/17'},
+      {id:'f3',name:'삼층 임차인',biz:'삼층 상호',unit:'301호',leaseStatus:'계약종료예정',rent:300000,payday:'10일',contract:'2025/01/01 ~ 2026/09/16'},
+      {id:'f4',name:'사층 임차인',biz:'사층 상호',unit:'401호',leaseStatus:'명도소송중',rent:400000,payday:'10일',contract:''}
+    ],bills:{'2026-08':{f2:{rent:200000,mgmt:10000,elevator:0,electricityNA:true,waterNA:true,wasteNA:true,unitSnapshot:'201호',paydaySnapshot:'10일'}}}};
+    const {page,context,errors}=await pageFor(data);
+    await page.locator('#nav-building').click();
+    assert.deepEqual(await page.locator('.building-card').evaluateAll(cards=>cards.map(card=>card.dataset.floor)),['1','2','3','4','5']);
+    const fifth=page.locator('.building-card[data-floor="5"]');
+    assert.match(await fifth.innerText(),/현재 임차인 없음/);assert.match(await fifth.innerText(),/공실\(정리중\)/);
+    assert.equal(await fifth.getAttribute('role'),null);
+    const expected=await page.evaluate(()=>RentalBilling.collectionStatus(tenants.find(t=>t.id==='f2'),bills));
+    const secondText=await page.locator('.building-card[data-floor="2"]').innerText();
+    assert.ok(secondText.includes(expected.status));assert.ok(secondText.includes(expected.totalUnpaid.toLocaleString('ko-KR')));
+    assert.match(secondText,/재계약예정/);assert.match(await page.locator('.building-card[data-floor="3"]').innerText(),/계약종료예정/);
+    assert.equal(await page.evaluate(()=>contractRemaining('2026/01/01 ~ 2026/09/17',new Date(2026,8,17))),'오늘 계약만료');
+    assert.equal(await page.evaluate(()=>contractRemaining('2026/01/01 ~ 2026/10/17',new Date(2026,8,17))),'계약만료까지 30일');
+    assert.equal(await page.evaluate(()=>contractRemaining('2025/01/01 ~ 2026/09/16',new Date(2026,8,17))),'계약만료 · 1일 경과');
+    assert.equal(await page.evaluate(()=>contractRemaining('',new Date(2026,8,17))),'해당없음');
+    const before=JSON.stringify(await state(page));
+    for(const [filter,floors] of [['all',['1','2','3','4','5']],['active',['4','5']],['waiting',['2','3']],['overdue',['2']]]){
+      await page.locator(`#building-filters [data-filter="${filter}"]`).click();
+      assert.deepEqual(await page.locator('.building-card').evaluateAll(cards=>cards.map(card=>card.dataset.floor)),floors);
+    }
+    assert.equal(JSON.stringify(await state(page)),before);
+    await page.locator('#building-filters [data-filter="all"]').click();await fifth.click();
+    assert.equal(await page.locator('#modal-tenant').isVisible(),false);
+    await page.locator('.building-card[data-floor="1"]').click();
+    assert.ok(await page.locator('#section-tenants').isVisible());assert.ok(await page.locator('#modal-tenant').isVisible());
+    assert.equal(await page.locator('#inp-name').inputValue(),'일층 임차인');
+    await page.locator('#modal-tenant .modal-close').click();
+    await page.evaluate(()=>{tenants.forEach(tenant=>tenant.leaseStatus='임대중');switchTab('building');setBuildingFilter('waiting');});
+    assert.equal(await page.locator('.building-card').count(),0);assert.match(await page.locator('.building-empty').innerText(),/해당하는 층이 없습니다/);
+    assert.deepEqual(errors,[]);await context.close();
   });
   await run('bill edits retain amounts across NA switches and preserve existing metadata', async () => {
     const {page, context, errors} = await pageFor();

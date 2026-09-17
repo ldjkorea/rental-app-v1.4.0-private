@@ -21,8 +21,13 @@ function validate_(data) {
   }
   if (!object(data) || !Array.isArray(data.tenants) || !object(data.bills)) throw new Error('임대 자료 형식 오류');
   ['loans'].forEach(function(k) { if (data[k] !== undefined && !Array.isArray(data[k])) throw new Error(k + ' 형식 오류'); });
-  ['expenses','renewalDone','settInputs','waterRatio'].forEach(function(k) {
+  ['expenses','renewalDone','settInputs','waterRatio','floorOperations'].forEach(function(k) {
     if (data[k] !== undefined && !object(data[k])) throw new Error(k + ' 형식 오류');
+  });
+  Object.keys(data.floorOperations || {}).forEach(function(floor) {
+    var operation = data.floorOperations[floor];
+    if (!/^[1-5]$/.test(floor) || !object(operation)) throw new Error('층 운영상태 형식 오류');
+    if (operation.leaseStatus !== undefined && LEASE_STATUSES.indexOf(operation.leaseStatus) < 0) throw new Error('층 임대상태 값 오류');
   });
   var ids = {};
   data.tenants.forEach(function(t) {

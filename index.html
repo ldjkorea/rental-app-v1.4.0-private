@@ -557,6 +557,33 @@ a {color:var(--gold);}
 .section-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:12px 0 24px;}
 .section-toolbar h2{font-size:19px;margin:0 0 6px;}.section-toolbar p{font-size:11px;color:#86917f;margin:0;}
 .section-toolbar input{width:220px;padding:11px 15px;border:1px solid #dce4d6;border-radius:10px;background:white;font-size:12px;}
+.building-toolbar{margin-bottom:14px;}
+.building-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.building-filters button{min-height:40px;padding:8px 16px;border:1px solid var(--border2);border-radius:9px;background:#fff;color:var(--text2);cursor:pointer;font-size:12px;}
+.building-filters button.active{border-color:#385f46;background:#385f46;color:#fff;}
+.building-floor-list{display:grid;gap:12px;}
+.building-card{display:grid;grid-template-columns:72px minmax(0,1fr);gap:20px;padding:22px 24px;border:1px solid var(--border);border-radius:15px;background:#fff;box-shadow:0 3px 15px rgba(34,49,35,.025);}
+.building-card.is-clickable{cursor:pointer;transition:border-color .15s,background .15s;}
+.building-card.is-clickable:hover{border-color:#cbd8c4;background:#fbfcf9;}
+.building-card.is-clickable:focus-visible{outline:3px solid rgba(59,113,86,.25);outline-offset:2px;}
+.building-floor{display:flex;align-items:baseline;justify-content:center;align-self:start;gap:2px;padding:8px 0;color:#385f46;}
+.building-floor span{font-size:30px;font-weight:700;line-height:1;}
+.building-floor small{font-size:13px;font-weight:600;}
+.building-card-body{min-width:0;}
+.building-tenant+.building-tenant{margin-top:18px;padding-top:18px;border-top:1px solid var(--border);}
+.building-identity{display:flex;align-items:baseline;gap:10px;margin-bottom:15px;min-width:0;}
+.building-identity strong{font-size:16px;overflow-wrap:anywhere;}
+.building-identity>span{font-size:11px;color:var(--text3);overflow-wrap:anywhere;}
+.building-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px;margin:0;}
+.building-fields div{min-width:0;}
+.building-fields dt{margin-bottom:5px;color:var(--text3);font-size:10px;}
+.building-fields dd{margin:0;color:var(--text);font-size:12px;font-weight:500;line-height:1.6;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
+.building-status{display:inline-block;padding:4px 8px;border:1px solid var(--border2);border-radius:7px;background:var(--surface2);font-size:10px;font-weight:600;line-height:1.4;}
+.building-status.is-ok{border-color:#d5e4ce;background:#eef6e9;color:#42704b;}
+.building-status.is-waiting{border-color:#eadfbd;background:#faf4e4;color:#8e7438;}
+.building-status.is-alert{border-color:#eed4cd;background:#fbefec;color:#a74f3e;}
+.building-status.is-empty{border-color:#dde3d9;background:#f1f3ee;color:#71806e;}
+.building-empty{padding:42px 20px;border:1px dashed var(--border2);border-radius:14px;background:#fff;text-align:center;color:var(--text2);font-size:12px;}
 .step-row{background:white;border:1px solid var(--border);border-radius:14px;padding:20px 25px;}
 .step-dot{background:#f4f6ef;}.step-line{background:#e4eadd;}
 .result-tbl{font-size:12px;min-width:600px;}.result-tbl th{background:#f4f7ef;padding:14px 12px;font-size:10px;letter-spacing:0;}.result-tbl td{padding:17px 12px;font-family:inherit;}
@@ -658,10 +685,20 @@ a {color:var(--gold);}
   .result-tbl { min-width:600px; }
   .data-notice, .reconcile, .reconcile-details { overflow-wrap:anywhere; }
   .step-row { padding:16px 12px; }
+  .building-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .building-filters button { min-width:0; padding:8px 4px; }
+  .building-card { grid-template-columns:48px minmax(0,1fr); gap:12px; padding:17px 14px; }
+  .building-floor span { font-size:25px; }
+  .building-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .building-identity { flex-wrap:wrap; margin-bottom:13px; }
 }
 @media screen and (max-width: 420px) {
   .field-row { grid-template-columns:1fr; }
   .charge-row { grid-template-columns:minmax(0,1fr) minmax(90px,auto); }
+  .pill-item { gap:3px; padding-left:1px; padding-right:1px; }
+  .pill-item svg { width:19px; height:19px; }
+  .pill-item .pi-label { font-size:9px; letter-spacing:-.2px; }
+  .building-fields { grid-template-columns:1fr; }
 }
 
 </style>
@@ -761,6 +798,18 @@ a {color:var(--gold);}
 
   </div><!-- /home -->
 
+  <!-- ======= 건물 운영현황 ======= -->
+  <section id="section-building" class="section">
+    <div class="section-toolbar building-toolbar"><div><h2>건물 운영현황</h2><p>1층부터 5층까지 현재 임대·수납·계약 상태를 확인합니다.</p></div></div>
+    <div id="building-filters" class="building-filters" role="group" aria-label="건물 운영현황 필터">
+      <button type="button" class="active" data-filter="all" aria-pressed="true" onclick="setBuildingFilter('all')">전체</button>
+      <button type="button" data-filter="active" aria-pressed="false" onclick="setBuildingFilter('active')">진행중</button>
+      <button type="button" data-filter="waiting" aria-pressed="false" onclick="setBuildingFilter('waiting')">대기중</button>
+      <button type="button" data-filter="overdue" aria-pressed="false" onclick="setBuildingFilter('overdue')">연체</button>
+    </div>
+    <div id="building-floor-list" class="building-floor-list" aria-live="polite"></div>
+  </section>
+
   <!-- ======= 고지서 탭 ======= -->
   <div id="section-history" class="section">
     <div class="section-label">세입자 선택</div>
@@ -824,7 +873,7 @@ a {color:var(--gold);}
 
 </div><!-- /content -->
 
-<aside class="workspace-sidebar"><a href="index.html" class="workspace-brand"><span class="brand-mark">P<span>·</span></span><span>Property<small>임대관리 워크스페이스</small></span></a><span class="nav-caption">WORKSPACE</span><nav class="pill-nav" aria-label="주요 메뉴"><button type="button" class="pill-item" id="nav-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="pi-label">대시보드</span></button><button type="button" class="pill-item" id="nav-tenants" onclick="switchTab('tenants')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0112 0v3M16 4a3 3 0 010 6M18 14a5 5 0 013 4v3"/></svg><span class="pi-label">세입자</span></button><button type="button" class="pill-item" id="nav-history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg><span class="pi-label">고지서</span></button><button type="button" class="pill-item" id="nav-settlement" onclick="switchTab('settlement')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/></svg><span class="pi-label">정산</span></button><button type="button" class="pill-item" id="nav-settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span class="pi-label">설정</span></button></nav><div class="sidebar-bottom"><span class="live-dot"></span> 나의 임대관리 공간<small>정산과 기록을 더 간결하게.</small><span class="version-label">VERSION 1.4.0</span></div></aside>
+<aside class="workspace-sidebar"><a href="index.html" class="workspace-brand"><span class="brand-mark">P<span>·</span></span><span>Property<small>임대관리 워크스페이스</small></span></a><span class="nav-caption">WORKSPACE</span><nav class="pill-nav" aria-label="주요 메뉴"><button type="button" class="pill-item" id="nav-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="pi-label">대시보드</span></button><button type="button" class="pill-item" id="nav-building" onclick="switchTab('building')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 21V3h11v18M15 9h5v12M8 7h3M8 11h3M8 15h3M8 19h3M18 13v2M18 18v1"/></svg><span class="pi-label">운영현황</span></button><button type="button" class="pill-item" id="nav-tenants" onclick="switchTab('tenants')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0112 0v3M16 4a3 3 0 010 6M18 14a5 5 0 013 4v3"/></svg><span class="pi-label">세입자</span></button><button type="button" class="pill-item" id="nav-history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg><span class="pi-label">고지서</span></button><button type="button" class="pill-item" id="nav-settlement" onclick="switchTab('settlement')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/></svg><span class="pi-label">정산</span></button><button type="button" class="pill-item" id="nav-settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span class="pi-label">설정</span></button></nav><div class="sidebar-bottom"><span class="live-dot"></span> 나의 임대관리 공간<small>정산과 기록을 더 간결하게.</small><span class="version-label">VERSION 1.4.0</span></div></aside>
 <!-- ══ 모달들 ══ -->
 <!-- 세입자 추가/수정 -->
 <div class="modal-overlay" id="modal-tenant">
@@ -972,9 +1021,9 @@ a {color:var(--gold);}
   const LEASE_STATUSES = Object.freeze(['임대중','재계약예정','계약종료예정','명도소송중','강제집행중','공실(정리중)','임대모집중']);
   // Older backups remain unchanged. Apply the default only at the display boundary.
   const leaseStatus = tenant => LEASE_STATUSES.includes(tenant?.leaseStatus) ? tenant.leaseStatus : '임대중';
-  const KEYS = ['tenants', 'bills', 'loans', 'expenses', 'renewalDone', 'settInputs', 'waterRatio'];
+  const KEYS = ['tenants', 'bills', 'loans', 'expenses', 'renewalDone', 'settInputs', 'waterRatio', 'floorOperations'];
   const empty = () => ({tenants: [], bills: {}, loans: [], expenses: {}, renewalDone: {},
-    settInputs: {}, waterRatio: {r2: 19, r3: 10, r4: 5}});
+    settInputs: {}, waterRatio: {r2: 19, r3: 10, r4: 5}, floorOperations: {5: {leaseStatus: '공실(정리중)'}}});
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const fail = message => { throw new Error(message); };
   const record = (value, label) => isObject(value) || fail(`${label}: 객체 형식이 필요합니다.`);
@@ -1114,6 +1163,12 @@ a {color:var(--gold);}
       }
     }));
     record(data.renewalDone, '갱신 상태');
+    record(data.floorOperations, '층 운영상태');
+    Object.entries(data.floorOperations).forEach(([floor, operation]) => {
+      if (!/^[1-5]$/.test(floor)) fail('층 운영상태는 1층부터 5층까지만 저장할 수 있습니다.');
+      record(operation, '층 운영상태');
+      if (operation.leaseStatus !== undefined && !LEASE_STATUSES.includes(operation.leaseStatus)) fail('층 임대상태를 확인해주세요.');
+    });
     record(data.waterRatio, '수도 비율');
     for (const key of ['r2', 'r3', 'r4']) {
       number(data.waterRatio[key], '수도 비율');
@@ -1521,7 +1576,7 @@ if(isDemo) {
 let loadedState;
 try { loadedState = RentalCore.load(appStorage); }
 catch (error) { loadedState = {data: RentalCore.empty(), error}; }
-let {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio} = loadedState.data;
+let {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations} = loadedState.data;
 let storageFault = loadedState.error;
 let conflictingTab = false;
 let revision = 0;
@@ -1760,9 +1815,9 @@ function historyTenants() {
 }
 let saveTimer=null;
 
-function currentData() { return {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio}; }
+function currentData() { return {tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations}; }
 function assignData(data) {
-  ({tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio} = data);
+  ({tenants, bills, loans, expenses, renewalDone, settInputs, waterRatio, floorOperations} = data);
   selTenantId = null;
   settCalcResult = null;
   revision++;
@@ -1814,7 +1869,7 @@ async function save() {
     return true;
   } catch(error) {
     failedSaveData=candidate;
-    ({tenants,bills,loans,expenses,renewalDone,settInputs,waterRatio}=JSON.parse(JSON.stringify(lastCommitted)));
+    ({tenants,bills,loans,expenses,renewalDone,settInputs,waterRatio,floorOperations}=JSON.parse(JSON.stringify(lastCommitted)));
     storageFault=error;
     syncUI('localError');renderAll();
     showDataNotice('저장하지 못해 직전 저장 상태를 유지했습니다. '+error.message+' 입력 내용은 백업 버튼으로 내보낼 수 있습니다.');
@@ -2047,11 +2102,11 @@ function applyMonthPicker(){
 /* ════════════════════════════════════════
    탭 전환
 ════════════════════════════════════════ */
-const TABS=['home','history','tenants','settlement','settings'];
+const TABS=['home','building','history','tenants','settlement','settings'];
 function switchTab(tab){
   if(typeof flushBillDraft==='function')flushBillDraft();
   document.body.dataset.tab=tab;
-  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',settings:'설정과 데이터'})[tab];
+  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',building:'건물 운영현황',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',settings:'설정과 데이터'})[tab];
   const pill=document.querySelector('.pill-nav');
   const hdr=document.getElementById('main-header');
   const deco=document.getElementById('home-deco');
@@ -2067,11 +2122,93 @@ function switchTab(tab){
   });
 
   if(tab==='home')renderHome();
+  if(tab==='building')renderBuildingOperations();
   if(tab==='settlement')renderSettTab();
   if(tab==='history'){renderHistChips();if(selTenantId)renderHistContent();}
   TABS.forEach(t=>document.getElementById('nav-'+t)?.setAttribute('aria-current', t===tab?'page':'false'));
 }
-function renderAll(){renderHome();renderTenants();renderLoanList();renderExpenseList();}
+function renderAll(){renderHome();renderBuildingOperations();renderTenants();renderLoanList();renderExpenseList();}
+
+/* ════════════════════════════════════════
+   건물 운영현황 — 기존 tenant/bills 계산 결과의 읽기 전용 투영
+════════════════════════════════════════ */
+const BUILDING_FILTERS={
+  all:()=>true,
+  active:row=>row.leaseStatuses.some(status=>['명도소송중','강제집행중','공실(정리중)','임대모집중'].includes(status)),
+  waiting:row=>row.leaseStatuses.some(status=>['재계약예정','계약종료예정'].includes(status)),
+  overdue:row=>row.collections.some(collection=>collection.status!=='정상'),
+};
+let buildingFilter='all';
+function contractRemaining(contract, asOf=new Date()) {
+  const end=String(contract||'').split('~')[1]?.trim(),iso=RentalBilling.dateISO(end||'');
+  if(!iso)return '해당없음';
+  const [y,m,d]=iso.split('-').map(Number),today=new Date(asOf.getFullYear(),asOf.getMonth(),asOf.getDate());
+  const days=Math.round((new Date(y,m-1,d)-today)/86400000);
+  if(days<0)return `계약만료 · ${Math.abs(days)}일 경과`;
+  if(days===0)return '오늘 계약만료';
+  return `계약만료까지 ${days}일`;
+}
+function buildingRows(asOf=new Date()) {
+  return [1,2,3,4,5].map(floor=>{
+    const occupants=activeTenants().filter(tenant=>getFloor(tenant.unit)===floor);
+    const collections=occupants.map(tenant=>RentalBilling.collectionStatus(tenant,bills,asOf));
+    const leaseStatuses=occupants.length
+      ?occupants.map(tenant=>RentalCore.leaseStatus(tenant))
+      :[floorOperations?.[floor]?.leaseStatus||(floor===5?'공실(정리중)':'-')];
+    return {floor,occupants,collections,leaseStatuses};
+  });
+}
+function setBuildingFilter(filter) {
+  if(!Object.hasOwn(BUILDING_FILTERS,filter))return;
+  buildingFilter=filter;renderBuildingOperations();
+}
+function openBuildingTenant(id) {
+  const tenant=activeTenants().find(item=>item.id===id);if(!tenant)return;
+  switchTab('tenants');editTenant(id);
+}
+function buildingStatusClass(status) {
+  if(status==='정상'||status==='임대중')return 'is-ok';
+  if(status==='재계약예정'||status==='계약종료예정')return 'is-waiting';
+  if(status==='해당없음'||status==='-')return 'is-empty';
+  return 'is-alert';
+}
+function renderBuildingOperations() {
+  const list=document.getElementById('building-floor-list');if(!list)return;
+  document.querySelectorAll('#building-filters button').forEach(button=>{
+    const selected=button.dataset.filter===buildingFilter;
+    button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));
+  });
+  const rows=buildingRows().filter(BUILDING_FILTERS[buildingFilter]);
+  if(!rows.length){list.innerHTML='<div class="empty building-empty">선택한 조건에 해당하는 층이 없습니다.</div>';return;}
+  list.innerHTML=rows.map(row=>{
+    const clickable=row.occupants.length===1;
+    const details=row.occupants.length?row.occupants.map((tenant,index)=>{
+      const collection=row.collections[index];
+      return `<div class="building-tenant">
+        <div class="building-identity"><strong>${esc(tenant.name||'-')}</strong><span>${esc(tenant.biz||'-')}</span></div>
+        <dl class="building-fields">
+          <div><dt>임대상태</dt><dd><span class="building-status ${buildingStatusClass(RentalCore.leaseStatus(tenant))}">${esc(RentalCore.leaseStatus(tenant))}</span></dd></div>
+          <div><dt>자동 수납상태</dt><dd><span class="building-status ${buildingStatusClass(collection.status)}">${esc(collection.status)}</span></dd></div>
+          <div><dt>계약기간</dt><dd>${esc(tenant.contract||'-')}</dd></div>
+          <div><dt>계약만료</dt><dd>${esc(contractRemaining(tenant.contract))}</dd></div>
+          <div><dt>월차임</dt><dd>${tenant.rent==null||tenant.rent===''?'-':fmt(tenant.rent)}</dd></div>
+          <div><dt>총 미납금액</dt><dd>${fmt(collection.totalUnpaid)}</dd></div>
+        </dl>
+      </div>`;
+    }).join(''):`<div class="building-tenant building-vacant">
+      <div class="building-identity"><strong>-</strong><span>현재 임차인 없음</span></div>
+      <dl class="building-fields">
+        <div><dt>임대상태</dt><dd><span class="building-status ${buildingStatusClass(row.leaseStatuses[0])}">${esc(row.leaseStatuses[0])}</span></dd></div>
+        <div><dt>자동 수납상태</dt><dd>해당없음</dd></div><div><dt>계약기간</dt><dd>해당없음</dd></div>
+        <div><dt>계약만료</dt><dd>해당없음</dd></div><div><dt>월차임</dt><dd>해당없음</dd></div><div><dt>총 미납금액</dt><dd>해당없음</dd></div>
+      </dl>
+    </div>`;
+    const action=clickable?` role="button" tabindex="0" aria-label="${row.floor}층 임차인 수정 열기" onclick="openBuildingTenant('${row.occupants[0].id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openBuildingTenant('${row.occupants[0].id}')}"`:'';
+    return `<article class="building-card${clickable?' is-clickable':''}" data-floor="${row.floor}"${action}>
+      <div class="building-floor"><span>${row.floor}</span><small>층</small></div><div class="building-card-body">${details}</div>
+    </article>`;
+  }).join('');
+}
 
 /* ════════════════════════════════════════
    민감정보 토글

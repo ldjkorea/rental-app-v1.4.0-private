@@ -11,7 +11,8 @@ const root = path.resolve(__dirname, '..');
 const out = path.join(root, 'test-results/single-file');
 const isolated = path.join(out, 'portable');
 const sizes = [[360,800],[390,844],[412,915],[768,1024],[1366,768],[1920,1080]];
-const tabs = ['home','tenants','history','settlement','settings'];
+const tabs = ['home','building','tenants','history','settlement','settings'];
+const baselineTabs = tabs.filter(tab=>tab!=='building');
 const results = [], errors = [];
 let browser, server;
 const baselineFiles = new Set(['index.html','assets/styles.css','assets/workspace.css','assets/core.js','assets/billing.js','assets/app.js','assets/enhancements.js','icon.svg','manifest.json']);
@@ -177,7 +178,7 @@ async function workflow(page, label) {
       const seed=await page.evaluate(()=>currentData());
       await page.evaluate(data=>localStorage.setItem(RentalCore.STATE_KEY,JSON.stringify(data)),seed);
       await page.goto(url);await page.locator('#section-home.active').waitFor();
-      await check(protocol+' '+width+'x'+height+' five tabs and layout',()=>navigate(page,width,height,protocol));
+      await check(protocol+' '+width+'x'+height+' six tabs and layout',()=>navigate(page,width,height,protocol));
       if(width===360||width===1920)
         await check(protocol+' '+width+' storage, bills, payment, settlement, backup/recovery',()=>workflow(page,protocol+'-'+width));
       assert.equal(requests.filter(u=>/\/assets\/|fonts\.google|script\.google/.test(u)).length,0,'no asset or external dependency');
@@ -196,7 +197,7 @@ async function workflow(page, label) {
       await pages[i].locator('#section-home.active').waitFor();
     }
     await check('PC '+width+'x'+height+' geometry against 33e61e6',async()=>{
-      for(const tab of tabs){
+      for(const tab of baselineTabs){
         const geometry=[];
         for(let i=0;i<pages.length;i++){
           await pages[i].locator('#nav-'+tab).click();

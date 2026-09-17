@@ -6,9 +6,9 @@
   const LEASE_STATUSES = Object.freeze(['임대중','재계약예정','계약종료예정','명도소송중','강제집행중','공실(정리중)','임대모집중']);
   // Older backups remain unchanged. Apply the default only at the display boundary.
   const leaseStatus = tenant => LEASE_STATUSES.includes(tenant?.leaseStatus) ? tenant.leaseStatus : '임대중';
-  const KEYS = ['tenants', 'bills', 'loans', 'expenses', 'renewalDone', 'settInputs', 'waterRatio'];
+  const KEYS = ['tenants', 'bills', 'loans', 'expenses', 'renewalDone', 'settInputs', 'waterRatio', 'floorOperations'];
   const empty = () => ({tenants: [], bills: {}, loans: [], expenses: {}, renewalDone: {},
-    settInputs: {}, waterRatio: {r2: 19, r3: 10, r4: 5}});
+    settInputs: {}, waterRatio: {r2: 19, r3: 10, r4: 5}, floorOperations: {5: {leaseStatus: '공실(정리중)'}}});
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const fail = message => { throw new Error(message); };
   const record = (value, label) => isObject(value) || fail(`${label}: 객체 형식이 필요합니다.`);
@@ -148,6 +148,12 @@
       }
     }));
     record(data.renewalDone, '갱신 상태');
+    record(data.floorOperations, '층 운영상태');
+    Object.entries(data.floorOperations).forEach(([floor, operation]) => {
+      if (!/^[1-5]$/.test(floor)) fail('층 운영상태는 1층부터 5층까지만 저장할 수 있습니다.');
+      record(operation, '층 운영상태');
+      if (operation.leaseStatus !== undefined && !LEASE_STATUSES.includes(operation.leaseStatus)) fail('층 임대상태를 확인해주세요.');
+    });
     record(data.waterRatio, '수도 비율');
     for (const key of ['r2', 'r3', 'r4']) {
       number(data.waterRatio[key], '수도 비율');
