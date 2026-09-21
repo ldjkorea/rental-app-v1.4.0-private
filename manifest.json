@@ -1,7 +1,7 @@
 {
-  "name": "임대관리 1.4",
-  "short_name": "임대관리 1.4",
-  "description": "임대관리 1.4.0 — 고지서·납부·정산·백업 관리",
+  "name": "건물 임대관리",
+  "short_name": "임대관리",
+  "description": "건물 임대관리 — 고지서·납부·세무·정산 관리",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0a0a0a",

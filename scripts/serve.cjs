@@ -22,4 +22,5 @@ const server = http.createServer((req, res) => {
   if (req.method === 'HEAD') res.end(); else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
 });
 server.on('error', error => { console.error(`실행 실패: ${error.message}`); process.exitCode = 1; });
-server.listen(port, '127.0.0.1', () => console.log(`임대관리 개선본: http://127.0.0.1:${server.address().port}`));
+server.listen(port, '0.0.0.0', () => console.log(`임대관리 개선본: http://127.0.0.1:${server.address().port} (모바일 접속: http://192.168.55.77:${server.address().port})`));
+

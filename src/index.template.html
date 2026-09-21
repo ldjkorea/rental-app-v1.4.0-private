@@ -8,8 +8,12 @@
 <meta name="theme-color" content="#0a0a0a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="PM">
-<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-title" content="임대관리">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 
 
@@ -191,11 +195,45 @@
       <div class="card-header"><div><div class="card-title">🗑️ 데이터 초기화</div></div></div>
       <button class="btn btn-secondary" onclick="resetAllData()" style="color:var(--red);border-color:var(--red);">전체 초기화</button>
     </div>
-  </div>
+  </div><!-- /section-settings -->
+
+  <!-- ======= 세무 집계 탭 ======= -->
+  <section id="section-tax" class="section">
+    <div class="section-toolbar">
+      <div>
+        <h2>분기별 세무 & 전자세금계산서 집계</h2>
+        <p>부가가치세 신고 및 세무사 전달용 3개월 매출·수납·세금계산서 현황입니다.</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="tax-quarter-select" onchange="changeTaxQuarter(this.value)" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--gold);font-weight:700;font-size:13px;cursor:pointer;">
+        </select>
+        <button type="button" class="btn btn-primary" onclick="exportTaxCsv()">📊 세무사용 CSV 다운로드</button>
+        <button type="button" class="btn btn-secondary" onclick="printTaxSummary()">🖨️ 인쇄 / PDF</button>
+      </div>
+    </div>
+
+    <!-- 세무 핵심 통계 지표 -->
+    <div id="tax-metrics" class="metrics-grid" style="margin-bottom:16px;"></div>
+
+    <!-- 세무 집계표 카드 -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="card-header" style="padding:16px 20px;">
+        <div>
+          <div class="card-title">전자세금계산서 및 임대공급가액 명세</div>
+          <div class="card-sub">과세(월세·관리비·전기) 및 면세/실비(수도 등) 분리 집계표</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table class="tax-table" id="tax-summary-table" style="width:100%;border-collapse:collapse;font-size:12px;min-width:920px;">
+          <!-- JS 렌더링 -->
+        </table>
+      </div>
+    </div>
+  </section>
 
 </div><!-- /content -->
 
-<aside class="workspace-sidebar"><a href="index.html" class="workspace-brand"><span class="brand-mark">P<span>·</span></span><span>Property<small>임대관리 워크스페이스</small></span></a><span class="nav-caption">WORKSPACE</span><nav class="pill-nav" aria-label="주요 메뉴"><button type="button" class="pill-item" id="nav-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="pi-label">대시보드</span></button><button type="button" class="pill-item" id="nav-building" onclick="switchTab('building')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 21V3h11v18M15 9h5v12M8 7h3M8 11h3M8 15h3M8 19h3M18 13v2M18 18v1"/></svg><span class="pi-label">운영현황</span></button><button type="button" class="pill-item" id="nav-tenants" onclick="switchTab('tenants')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0112 0v3M16 4a3 3 0 010 6M18 14a5 5 0 013 4v3"/></svg><span class="pi-label">세입자</span></button><button type="button" class="pill-item" id="nav-history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg><span class="pi-label">고지서</span></button><button type="button" class="pill-item" id="nav-settlement" onclick="switchTab('settlement')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/></svg><span class="pi-label">정산</span></button><button type="button" class="pill-item" id="nav-settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span class="pi-label">설정</span></button></nav><div class="sidebar-bottom"><span class="live-dot"></span> 나의 임대관리 공간<small>정산과 기록을 더 간결하게.</small><span class="version-label">VERSION 1.4.0</span></div></aside>
+<aside class="workspace-sidebar"><a href="index.html" class="workspace-brand"><span class="brand-mark">P<span>·</span></span><span>Property<small>임대관리 워크스페이스</small></span></a><span class="nav-caption">WORKSPACE</span><nav class="pill-nav" aria-label="주요 메뉴"><button type="button" class="pill-item" id="nav-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="pi-label">대시보드</span></button><button type="button" class="pill-item" id="nav-building" onclick="switchTab('building')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 21V3h11v18M15 9h5v12M8 7h3M8 11h3M8 15h3M8 19h3M18 13v2M18 18v1"/></svg><span class="pi-label">운영현황</span></button><button type="button" class="pill-item" id="nav-tenants" onclick="switchTab('tenants')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0112 0v3M16 4a3 3 0 010 6M18 14a5 5 0 013 4v3"/></svg><span class="pi-label">세입자</span></button><button type="button" class="pill-item" id="nav-history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg><span class="pi-label">고지서</span></button><button type="button" class="pill-item" id="nav-settlement" onclick="switchTab('settlement')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/></svg><span class="pi-label">정산</span></button><button type="button" class="pill-item" id="nav-tax" onclick="switchTab('tax')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 7h6M9 11h6M9 15h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg><span class="pi-label">세무집계</span></button><button type="button" class="pill-item" id="nav-settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span class="pi-label">설정</span></button></nav><div class="sidebar-bottom"><span class="live-dot"></span> 나의 임대관리 공간<small>정산과 기록을 더 간결하게.</small><span class="version-label">VERSION 1.4.0</span></div></aside>
 <!-- ══ 모달들 ══ -->
 <!-- 세입자 추가/수정 -->
 <div class="modal-overlay" id="modal-tenant">
@@ -210,6 +248,13 @@
     </div>
     <div class="field"><label>호수</label><input type="text" id="inp-unit" placeholder="101호"></div>
     <div class="field"><label for="inp-lease-status">임대상태 (수동)</label><select id="inp-lease-status"><option>임대중</option><option>재계약예정</option><option>계약종료예정</option><option>명도소송중</option><option>강제집행중</option><option>공실(정리중)</option><option>임대모집중</option></select><div style="font-size:11px;color:var(--text2);margin-top:4px;">수납상태는 월별 납부내역과 납기일을 기준으로 자동 계산합니다. 임대상태 변경으로 청구·납부내역이 바뀌지는 않습니다.</div></div>
+    <div class="divider"></div>
+    <div class="section-label">세무 & 전자세금계산서 정보</div>
+    <div class="field-row">
+      <div class="field"><label for="inp-bizno">사업자등록번호</label><input type="text" id="inp-bizno" placeholder="000-00-00000"></div>
+      <div class="field"><label for="inp-repname">대표자 성명</label><input type="text" id="inp-repname" placeholder="대표자명"></div>
+    </div>
+    <div class="field"><label for="inp-email">세금계산서 수신 이메일</label><input type="email" id="inp-email" placeholder="tax@company.com"></div>
     <div class="divider"></div>
     <div class="section-label">계약 정보</div>
     <div class="field"><label for="inp-deposit">보증금 (원)</label><input type="number" id="inp-deposit" min="0" step="1" placeholder="금액 확인 후 입력"><div style="font-size:11px;color:var(--text2);margin-top:4px;">비워 두면 기존 값을 유지합니다. 기존 값이 없으면 확인 필요로 표시합니다.</div></div>
@@ -301,12 +346,24 @@
 
 <!-- 카카오 모달 -->
 <div class="modal-overlay" id="modal-receipt">
-  <div class="modal">
+  <div class="modal" style="max-width:580px;">
     <button aria-label="닫기" class="modal-close" onclick="closeModal('modal-receipt')">✕</button>
-    <div class="modal-title">💬 카카오톡 메시지</div>
-    <div id="kakao-msg-wrap"></div>
-    <button class="btn btn-green" onclick="copyKakao()">📋 복사하기</button>
-    <button class="btn btn-secondary" onclick="closeModal('modal-receipt')">닫기</button>
+    <div class="modal-title">💬 카카오톡 / 문자 청구서</div>
+    <div class="template-tabs" style="display:flex;gap:6px;margin-bottom:12px;">
+      <button type="button" id="tab-kakao-simple" class="tab-chip active" onclick="switchKakaoTab('simple')" style="padding:7px 14px;border-radius:20px;border:1px solid var(--gold);background:var(--goldbg2);color:var(--gold);font-weight:700;font-size:12px;cursor:pointer;">⚡ 간편 요약형 (문자/카톡 5줄)</button>
+      <button type="button" id="tab-kakao-detail" class="tab-chip" onclick="switchKakaoTab('detail')" style="padding:7px 14px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-weight:600;font-size:12px;cursor:pointer;">📋 정밀 명세서형 (상세)</button>
+    </div>
+    <div id="kakao-msg-wrap">
+      <textarea id="kakao-text" aria-label="청구 메시지 본문" style="width:100%;min-height:280px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:12px;font-family:'DM Mono','Noto Sans KR',sans-serif;font-size:12.5px;line-height:1.65;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin:8px 0 14px;display:flex;justify-content:space-between;align-items:center;">
+      <span>※ 발송 전 자유롭게 수정할 수 있으며, 복사 시 수정된 내용이 복사됩니다.</span>
+      <span id="kakao-char-count" style="font-family:'DM Mono',monospace;color:var(--gold);"></span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-green" style="flex:1;" onclick="copyKakao()">📋 복사하기</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-receipt')">닫기</button>
+    </div>
   </div>
 </div>
 

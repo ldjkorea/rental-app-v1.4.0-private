@@ -39,7 +39,7 @@ function contractCalendarLabel_(row) {
 }
 
 function contractCalendarTitle_(row) {
-  return '[임대관리] ' + (row.floor ? row.floor + '층 ' : '') + contractCalendarLabel_(row) + ' 계약 만료';
+  return '[건물 관리] ' + (row.floor ? row.floor + '층 ' : '') + contractCalendarLabel_(row) + ' 계약 만료';
 }
 
 function contractCalendarDescription_(row) {

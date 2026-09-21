@@ -6,9 +6,9 @@ Apps Script 프로젝트에는 `server/Code.gs`, `server/Billing.gs`, `server/Cu
 
 ## 최초 권한과 문서 ID
 
-새 서버 버전의 첫 저장 또는 `현재현황 다시 생성` 실행 시 Google Docs와 Drive 권한 승인이 필요할 수 있다. 정확한 이름의 `임대관리_현재현황` 문서가 하나 있으면 그 문서를 사용하고, 없으면 한 번 생성한 뒤 Script Property `RENTAL_STATUS_DOCUMENT_ID`에 ID를 보관한다.
+새 서버 버전의 첫 저장 또는 `현재현황 다시 생성` 실행 시 Google Docs 권한 승인이 필요할 수 있다. `server/CurrentStatus.gs`의 운영 문서 ID를 고정 기본값으로 사용하며, Script Property `RENTAL_STATUS_DOCUMENT_ID`가 있으면 그 값을 우선한다. Property가 없으면 운영 문서 ID를 Property에 복구한 뒤 `DocumentApp.openById`로 연다. 문서 제목은 표시용 heading일 뿐 연결에 사용하지 않는다.
 
-동일한 이름의 문서가 여러 개면 자동 선택하지 않는다. 저장된 문서 ID가 잘못됐거나 접근할 수 없는 경우에도 다른 문서를 만들지 않으며 앱에 경고를 반환한다. 이 경우 Apps Script 프로젝트 설정에서 `RENTAL_STATUS_DOCUMENT_ID`를 올바른 문서 ID로 수정한다.
+문서 ID가 잘못됐거나 접근할 수 없는 경우에는 이름 검색이나 새 문서 생성을 시도하지 않고 명확한 오류를 반환한다. 이 경우 Apps Script 프로젝트 설정에서 `RENTAL_STATUS_DOCUMENT_ID`를 올바른 문서 ID로 수정한다. 운영 기본 ID는 `1-HZYrBDD8HPZYO8sNCy33Q298DJ91LJIJAWRuWdQgFI`이다.
 
 ## 자동생성 영역
 

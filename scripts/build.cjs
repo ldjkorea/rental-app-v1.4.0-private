@@ -9,6 +9,22 @@ function build() {
   const read = name => fs.readFileSync(path.join(root, name), 'utf8');
   const icon = fs.readFileSync(path.join(root, 'icon.svg')).toString('base64');
   html = html.replace(/href="icon.svg"/g, 'href="data:image/svg+xml;base64,' + icon + '"');
+  if (fs.existsSync(path.join(root, 'icons/icon-180.png'))) {
+    const icon180 = fs.readFileSync(path.join(root, 'icons/icon-180.png')).toString('base64');
+    html = html.replace(/href="icons\/icon-180\.png"/g, 'href="data:image/png;base64,' + icon180 + '"');
+  }
+  if (fs.existsSync(path.join(root, 'icons/icon-192.png'))) {
+    const icon192 = fs.readFileSync(path.join(root, 'icons/icon-192.png')).toString('base64');
+    html = html.replace(/href="icons\/icon-192\.png"/g, 'href="data:image/png;base64,' + icon192 + '"');
+  }
+  if (fs.existsSync(path.join(root, 'icons/icon-512.png'))) {
+    const icon512 = fs.readFileSync(path.join(root, 'icons/icon-512.png')).toString('base64');
+    html = html.replace(/href="icons\/icon-512\.png"/g, 'href="data:image/png;base64,' + icon512 + '"');
+  }
+  if (fs.existsSync(path.join(root, 'manifest.json'))) {
+    const manifest = fs.readFileSync(path.join(root, 'manifest.json')).toString('base64');
+    html = html.replace(/href="manifest\.json"/g, 'href="data:application/manifest+json;base64,' + manifest + '"');
+  }
   html = html.replace(/<link rel="stylesheet" href="(assets\/[^"]+\.css)">/g,
     (_, name) => {
       const css = read(name);

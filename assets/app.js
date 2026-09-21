@@ -283,9 +283,31 @@ function refreshDataViews() {
   document.getElementById('hist-nav').style.display = 'none';
   if (document.getElementById('section-settlement').classList.contains('active')) renderSettTab();
 }
-function showDataNotice(message) {
+function showDataNotice(message, actions = []) {
   const el = document.getElementById('data-notice');
-  if (el) { el.hidden = !message; el.textContent = message || ''; }
+  if (!el) return;
+  el.hidden = !message;
+  el.replaceChildren();
+  if (!message) return;
+  const span = document.createElement('span');
+  span.textContent = message;
+  el.appendChild(span);
+  if (Array.isArray(actions) && actions.length > 0) {
+    const btnWrap = document.createElement('span');
+    btnWrap.style.marginLeft = '8px';
+    btnWrap.style.display = 'inline-flex';
+    btnWrap.style.gap = '6px';
+    btnWrap.style.verticalAlign = 'middle';
+    actions.forEach(act => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = act.text;
+      btn.style.cssText = 'padding:2px 8px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:var(--card);color:var(--text);border:1px solid var(--border);line-height:1.4;';
+      btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); act.onClick(); };
+      btnWrap.appendChild(btn);
+    });
+    el.appendChild(btnWrap);
+  }
 }
 function withStorageLock(action) {
   if (!navigator.locks?.request) throw new Error('안전한 저장에는 HTTPS 또는 localhost의 최신 브라우저가 필요합니다.');
@@ -422,13 +444,42 @@ async function doSync(options = {}) {
     const remote=await cloudRequest();
     const remoteData=RentalCore.validateData(remote.data);
     if(!supportsSafeSync(remote))throw new Error('기존 서버가 버전 비교 저장을 지원하지 않아 업로드를 차단했습니다. 불러오기는 가능합니다.');
+    const localData=RentalCore.validateData(currentData());
     if(!cloudBaseRevision) {
-      if(!options.manual)throw new Error('구글 기준 버전이 없습니다. 먼저 불러오거나 수동 저장에서 자료를 대조해주세요.');
-      if(!confirm('구글 세입자 '+remoteData.tenants.length+'명 / 고지서 '+Object.keys(remoteData.bills).length+'개월을 현재 기기 자료로 교체할까요? 서버 자료를 이 기기에 별도 보관한 뒤 버전을 비교하여 저장합니다.'))return;
-      appStorage.setItem('rentalApp.cloudRecovery.v1',JSON.stringify(RentalCore.envelope(remoteData)));
-      cloudBaseRevision=remote.revision;
+      if(!options.manual && !options.force) {
+        if(JSON.stringify(remoteData)===JSON.stringify(localData)) {
+          cloudBaseRevision=remote.revision;
+        } else {
+          throw new Error('구글 기준 버전이 없습니다. 먼저 불러오거나 수동 저장에서 자료를 대조해주세요.');
+        }
+      } else {
+        if(!options.force && !confirm('구글 세입자 '+remoteData.tenants.length+'명 / 고지서 '+Object.keys(remoteData.bills).length+'개월을 현재 기기 자료로 교체할까요? 서버 자료를 이 기기에 별도 보관한 뒤 버전을 비교하여 저장합니다.'))return;
+        appStorage.setItem('rentalApp.cloudRecovery.v1',JSON.stringify(RentalCore.envelope(remoteData)));
+        cloudBaseRevision=remote.revision;
+      }
     }
-    if(remote.revision!==cloudBaseRevision)throw new Error('구글 자료가 다른 기기에서 변경됐습니다. 로컬 백업을 내보낸 뒤 불러오기와 대조가 필요합니다.');
+    if(remote.revision!==cloudBaseRevision) {
+      const isIdentical = JSON.stringify(remoteData)===JSON.stringify(localData);
+      if (isIdentical) {
+        cloudBaseRevision=remote.revision;
+      } else if (!cloudDirty) {
+        assignData(remoteData);
+        cloudBaseRevision=remote.revision;
+        refreshDataViews();
+      } else {
+        const shouldOverwrite = options.force || (options.manual && confirm('구글 서버에 다른 기기(PC 등)의 최신 변경 내용이 있습니다.\n\n[확인]: 핸드폰에서 수정한 내용으로 구글에 저장(덮어쓰기)합니다.\n[취소]: 구글 최신 내용을 유지합니다.'));
+        if (shouldOverwrite) {
+          appStorage.setItem('rentalApp.cloudRecovery.v1', JSON.stringify(RentalCore.envelope(remoteData)));
+          cloudBaseRevision=remote.revision;
+        } else {
+          showDataNotice('구글 자료가 다른 기기에서 변경됐습니다. 로컬 백업을 내보낸 뒤 불러오기와 대조가 필요합니다.', [
+            {text: '핸드폰 내용으로 저장', onClick: () => doSync({manual: true, force: true})},
+            {text: '구글에서 불러오기', onClick: syncFromSheet}
+          ]);
+          throw new Error('구글 자료가 다른 기기에서 변경됐습니다. 로컬 백업을 내보낸 뒤 불러오기와 대조가 필요합니다.');
+        }
+      }
+    }
     if(!cloudEnabled)throw new Error('동기화가 꺼졌습니다.');
     assertCurrentStorage();
     const sentRevision=revision, data=RentalCore.validateData(currentData());
@@ -447,7 +498,12 @@ async function doSync(options = {}) {
     success=true;showDataNotice('');
     showCurrentStatusResult(result.docs,true);
     syncUI(!cloudEnabled?'local':cloudDirty?'pending':'saved');
-  } catch(error) {syncUI(cloudEnabled?'error':'local');showDataNotice(error.message);}
+  } catch(error) {
+    syncUI(cloudEnabled?'error':'local');
+    if (!document.getElementById('data-notice')?.innerText.includes('다른 기기')) {
+      showDataNotice(error.message);
+    }
+  }
   finally {
     syncBusy=false;
     if(success&&cloudDirty&&cloudEnabled)saveTimer=setTimeout(doSync,2000);
@@ -581,11 +637,11 @@ function applyMonthPicker(){
 /* ════════════════════════════════════════
    탭 전환
 ════════════════════════════════════════ */
-const TABS=['home','building','history','tenants','settlement','settings'];
+const TABS=['home','building','history','tenants','settlement','tax','settings'];
 function switchTab(tab){
   if(typeof flushBillDraft==='function')flushBillDraft();
   document.body.dataset.tab=tab;
-  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',building:'건물 운영현황',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',settings:'설정과 데이터'})[tab];
+  document.getElementById('page-title').textContent=({home:'이번 달 한눈에',building:'건물 운영현황',tenants:'세입자 관리',history:'월별 고지서',settlement:'공용 비용 정산',tax:'분기별 세무 집계',settings:'설정과 데이터'})[tab];
   const pill=document.querySelector('.pill-nav');
   const hdr=document.getElementById('main-header');
   const deco=document.getElementById('home-deco');
@@ -603,6 +659,7 @@ function switchTab(tab){
   if(tab==='home')renderHome();
   if(tab==='building')renderBuildingOperations();
   if(tab==='settlement')renderSettTab();
+  if(tab==='tax')renderTaxSummary();
   if(tab==='history'){renderHistChips();if(selTenantId)renderHistContent();}
   TABS.forEach(t=>document.getElementById('nav-'+t)?.setAttribute('aria-current', t===tab?'page':'false'));
 }
@@ -1040,7 +1097,7 @@ function updateRenewPreview(){
 function openAddTenant(){
   mgmtEdited=false;editTenantId=null;renewalEdit=null;document.getElementById('modal-tenant-title').textContent='세입자 추가';
   document.getElementById('renewal-edit-note').hidden=true;document.getElementById('save-tenant-button').textContent='저장';
-  ['inp-name','inp-biz','inp-unit','inp-contract','inp-contract-first','inp-payday','inp-renew','inp-rent','inp-deposit','inp-elevator','inp-elec-fixed','inp-pm','inp-pr','inp-pe','inp-pev','inp-pw','inp-wd'].forEach(f=>{const e=document.getElementById(f);if(e)e.value=f==='inp-renew'?'1년단위 재계약':'';});
+  ['inp-name','inp-biz','inp-unit','inp-contract','inp-contract-first','inp-payday','inp-renew','inp-rent','inp-deposit','inp-elevator','inp-elec-fixed','inp-pm','inp-pr','inp-pe','inp-pev','inp-pw','inp-wd','inp-bizno','inp-repname','inp-email'].forEach(f=>{const e=document.getElementById(f);if(e)e.value=f==='inp-renew'?'1년단위 재계약':'';});
   document.getElementById('inp-lease-status').value=RentalCore.leaseStatus();
   document.getElementById('inp-paytype').value='후불납';document.getElementById('inp-elec-type').value='none';document.getElementById('inp-wo').value='';
   document.getElementById('elec-fixed-wrap').style.display='none';document.getElementById('renew-preview-wrap').style.display='none';
@@ -1056,6 +1113,9 @@ function editTenant(id){
   document.getElementById('inp-lease-status').value=RentalCore.leaseStatus(t);
   document.getElementById('inp-deposit').value=t.deposit??'';
   ['name','biz','unit','contract','contract_first','payday','renew','rent','elevator'].forEach(f=>{const e=document.getElementById('inp-'+f.replace('_','-'));if(e)e.value=t[f]||t[f.replace('-','_')]||'';});
+  const ebz=document.getElementById('inp-bizno');if(ebz)ebz.value=t.bizNo||'';
+  const erp=document.getElementById('inp-repname');if(erp)erp.value=t.repName||'';
+  const eml=document.getElementById('inp-email');if(eml)eml.value=t.email||'';
   updateRenewPreview();
   document.getElementById('inp-paytype').value=t.paytype||'후불납';
   document.getElementById('inp-elec-type').value=t.elecType||'none';
@@ -1091,6 +1151,9 @@ async function saveTenant(){
   const d={name,unit,
     leaseStatus:document.getElementById('inp-lease-status').value,
     biz:document.getElementById('inp-biz').value.trim(),
+    bizNo:document.getElementById('inp-bizno')?.value.trim()||'',
+    repName:document.getElementById('inp-repname')?.value.trim()||'',
+    email:document.getElementById('inp-email')?.value.trim()||'',
     contract:document.getElementById('inp-contract').value.trim(),
     contract_first:document.getElementById('inp-contract-first').value.trim(),
     payday:document.getElementById('inp-payday').value.trim(),
@@ -2001,13 +2064,317 @@ ${totalDue > 0 ? `기존 미입금된 ${unpaidItems.join(', ')} 확인 후 입�
 
 다인빌딩 관리인`;
 
-  document.getElementById('kakao-msg-wrap').innerHTML=`<div class="kakao-box" id="kakao-text">${msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  const simpleMsg = `[${t.biz || t.name} ${um}월 임대료 및 관리비 청구 안내]
+
+안녕하세요, ${t.biz || t.name}(${t.unit}) 대표님.
+다인빌딩 관리인입니다. ${um}월분 청구 내역 안내드립니다.
+
+- 월세: ${fmtN(rentTotal)}원 (${rentStatus}${rentPaidDate ? ` · ${rentPaidDate} 입금 확인` : ''})
+- 관리비: ${fmtN(mgmtTotal)}원 (${mgmtStatus}${mgmtPaidDate ? ` · ${mgmtPaidDate} 입금 확인` : ''})
+- 공용전기료: ${fmtN(elecTotal)}원 (${elecStatus})
+- 승강기 유지비: ${fmtN(elevTotal)}원 (${elevStatus})
+- 수도요금: ${waterAmt > 0 ? fmtN(waterAmt) + '원 (' + waterStatus + ')' : '정산 예정 / 미부과'}
+------------------------------------
+▶ 총 입금 요청금액: ${fmtN(totalDue)}원
+▶ 입금 기한: ${t.payday ? t.payday : '해당 월 말일'}까지
+▶ 입금 계좌: [다인빌딩 관리 계좌] (입금 시 상호명 표기 부탁드립니다)
+
+※ 전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정입니다.
+${totalDue > 0 ? `기존 미입금된 ${unpaidItems.join(', ')} 확인 후 입금 부탁드립니다.` : '전액 입금 확인되었습니다. 감사합니다.'}
+
+감사합니다.
+다인빌딩 관리인`;
+
+  kakaoCache = { simple: simpleMsg, detail: msg };
+  const wrap = document.getElementById('kakao-msg-wrap');
+  if (wrap) {
+    wrap.innerHTML = `<div class="kakao-box" id="kakao-text" contenteditable="true" oninput="updateKakaoCount()" style="white-space:pre-wrap;outline:none;cursor:text;min-height:260px;max-height:420px;overflow-y:auto;border:1px solid var(--border2);padding:14px;border-radius:8px;background:var(--surface2);font-family:'DM Mono','Noto Sans KR',sans-serif;font-size:12.5px;line-height:1.7;"></div>`;
+  }
+  switchKakaoTab(currentKakaoTab || 'simple');
   openModal('modal-receipt');
 }
+
+let kakaoCache = { simple: '', detail: '' };
+let currentKakaoTab = 'simple';
+
+function switchKakaoTab(tab) {
+  currentKakaoTab = tab;
+  const btnS = document.getElementById('tab-kakao-simple');
+  const btnD = document.getElementById('tab-kakao-detail');
+  if (btnS && btnD) {
+    btnS.style.borderColor = tab === 'simple' ? 'var(--gold)' : 'var(--border2)';
+    btnS.style.background = tab === 'simple' ? 'var(--goldbg2)' : 'var(--surface2)';
+    btnS.style.color = tab === 'simple' ? 'var(--gold)' : 'var(--text2)';
+    btnD.style.borderColor = tab === 'detail' ? 'var(--gold)' : 'var(--border2)';
+    btnD.style.background = tab === 'detail' ? 'var(--goldbg2)' : 'var(--surface2)';
+    btnD.style.color = tab === 'detail' ? 'var(--gold)' : 'var(--text2)';
+  }
+  const el = document.getElementById('kakao-text');
+  if (el) {
+    el.innerText = kakaoCache[tab] || '';
+    updateKakaoCount();
+  }
+}
+
+function updateKakaoCount() {
+  const el = document.getElementById('kakao-text');
+  const countEl = document.getElementById('kakao-char-count');
+  if (el && countEl) {
+    countEl.textContent = `${el.innerText.length}자`;
+  }
+}
+
 async function copyKakao() {
   const el = document.getElementById('kakao-text'); if (!el) return;
   try { await navigator.clipboard.writeText(el.innerText); showToast('복사됐어요! 카카오톡에 붙여넣기 📋'); }
   catch { showToast('자동 복사를 사용할 수 없습니다. 메시지 내용을 선택해서 복사해주세요.'); }
+}
+
+/* ════════════════════════════════════════
+   분기별 세무 & 전자세금계산서 집계
+════════════════════════════════════════ */
+let selTaxQuarter = null;
+
+function getAvailableQuarters() {
+  const years = new Set([cY, cY - 1]);
+  Object.keys(bills).forEach(mk => {
+    const y = Number(mk.slice(0, 4));
+    if (y) years.add(y);
+  });
+  const quarters = [];
+  Array.from(years).sort((a, b) => b - a).forEach(y => {
+    [4, 3, 2, 1].forEach(q => {
+      quarters.push({
+        key: `${y}-Q${q}`,
+        year: y,
+        quarter: q,
+        label: `${y}년 ${q}분기 (${q === 1 ? '1~3월 · 1기예정' : q === 2 ? '4~6월 · 1기확정' : q === 3 ? '7~9월 · 2기예정' : '10~12월 · 2기확정'})`,
+        months: [
+          `${y}-${String((q - 1) * 3 + 1).padStart(2, '0')}`,
+          `${y}-${String((q - 1) * 3 + 2).padStart(2, '0')}`,
+          `${y}-${String((q - 1) * 3 + 3).padStart(2, '0')}`
+        ]
+      });
+    });
+  });
+  return quarters;
+}
+
+function changeTaxQuarter(val) {
+  selTaxQuarter = val;
+  renderTaxSummary();
+}
+
+function renderTaxSummary() {
+  const quarters = getAvailableQuarters();
+  if (!selTaxQuarter) {
+    const currentQ = Math.floor((cM - 1) / 3) + 1;
+    selTaxQuarter = `${cY}-Q${currentQ}`;
+  }
+  const selQ = quarters.find(q => q.key === selTaxQuarter) || quarters[0];
+  if (!selQ) return;
+
+  const selEl = document.getElementById('tax-quarter-select');
+  if (selEl) {
+    selEl.innerHTML = quarters.map(q => `<option value="${q.key}" ${q.key === selQ.key ? 'selected' : ''}>${q.label}</option>`).join('');
+  }
+
+  const activeTenants = tenants.filter(t => !t.archived);
+  let totalTaxableNet = 0;
+  let totalTaxableVat = 0;
+  let totalExempt = 0;
+  let totalGross = 0;
+  let totalInvoicesExpected = 0;
+  let totalInvoicesIssued = 0;
+
+  const rows = activeTenants.map(t => {
+    let rentNetSum = 0, mgmtNetSum = 0, elecNetSum = 0;
+    let waterSum = 0, elevSum = 0;
+    let issuedCount = 0;
+    let unpaidSum = 0;
+
+    selQ.months.forEach(mk => {
+      const b = (bills[mk] || {})[t.id] || {};
+      const bt = billTenant(t, b);
+      const chg = RentalBilling.charges(bt, b);
+      
+      const rNet = Number(bt.rent) || 0;
+      const mNet = Number(bt.mgmt) || 0;
+      const eNet = b.electricityNA ? 0 : (Number(b.electricity) || 0);
+
+      rentNetSum += rNet;
+      mgmtNetSum += mNet;
+      elecNetSum += eNet;
+
+      waterSum += (chg.pay_water || 0);
+      elevSum += (chg.pay_elev || 0);
+
+      totalInvoicesExpected++;
+      if (b.invoiceIssued) {
+        issuedCount++;
+        totalInvoicesIssued++;
+      }
+
+      const timing = Object.keys(b).length ? RentalBilling.historicalPayment(bt, b, Number(mk.slice(0, 4)), Number(mk.slice(5, 7)), new Date()) : null;
+      if (timing?.summary?.overdue) {
+        unpaidSum += timing.summary.overdue;
+      }
+    });
+
+    const taxableNet = rentNetSum + mgmtNetSum + elecNetSum;
+    const vat = withVat(taxableNet) - taxableNet;
+    const exempt = waterSum;
+    const gross = taxableNet + vat + exempt + elevSum;
+
+    totalTaxableNet += taxableNet;
+    totalTaxableVat += vat;
+    totalExempt += (exempt + elevSum);
+    totalGross += gross;
+
+    return {
+      tenant: t,
+      unit: t.unit,
+      name: t.name,
+      biz: t.biz || '-',
+      bizNo: t.bizNo || '-',
+      deposit: t.deposit ? Number(t.deposit) : 0,
+      rentNet: rentNetSum,
+      mgmtNet: mgmtNetSum,
+      elecNet: elecNetSum,
+      taxableNet,
+      vat,
+      exempt: exempt + elevSum,
+      gross,
+      issuedCount,
+      unpaidSum
+    };
+  });
+
+  const metricsEl = document.getElementById('tax-metrics');
+  if (metricsEl) {
+    metricsEl.innerHTML = `
+      <div class="metric-card"><div class="m-label">과세 공급가액 합계</div><div class="m-val" style="color:var(--gold);">${fmt(totalTaxableNet)}</div><div class="m-sub">월세 + 관리비 + 공용전기</div></div>
+      <div class="metric-card"><div class="m-label">부가가치세 (VAT 10%)</div><div class="m-val" style="color:var(--gold2);">${fmt(totalTaxableVat)}</div><div class="m-sub">세금계산서 매출세액</div></div>
+      <div class="metric-card"><div class="m-label">면세 및 실비 합계</div><div class="m-val">${fmt(totalExempt)}</div><div class="m-sub">수도요금(면세) + 승강기 실비</div></div>
+      <div class="metric-card"><div class="m-label">전자세금계산서 발급</div><div class="m-val" style="color:${totalInvoicesIssued === totalInvoicesExpected ? 'var(--green)' : 'var(--gold2)'};">${totalInvoicesIssued} / ${totalInvoicesExpected}건</div><div class="m-sub">${totalInvoicesExpected > 0 ? Math.round(totalInvoicesIssued / totalInvoicesExpected * 100) : 0}% 발급 완료</div></div>
+    `;
+  }
+
+  const tableEl = document.getElementById('tax-summary-table');
+  if (tableEl) {
+    tableEl.innerHTML = `
+      <thead>
+        <tr style="background:var(--surface2);border-bottom:1px solid var(--border2);color:var(--text2);">
+          <th style="padding:10px 12px;text-align:left;">호수</th>
+          <th style="padding:10px 12px;text-align:left;">상호 (성명)</th>
+          <th style="padding:10px 12px;text-align:left;">사업자등록번호</th>
+          <th style="padding:10px 12px;text-align:right;">보증금</th>
+          <th style="padding:10px 12px;text-align:right;">3개월 월세 공급가</th>
+          <th style="padding:10px 12px;text-align:right;">관리비·전기 공급가</th>
+          <th style="padding:10px 12px;text-align:right;color:var(--gold);">과세 공급가 합계</th>
+          <th style="padding:10px 12px;text-align:right;color:var(--gold2);">부가세 (10%)</th>
+          <th style="padding:10px 12px;text-align:right;">수도·실비 (면세)</th>
+          <th style="padding:10px 12px;text-align:center;">전자세금계산서</th>
+          <th style="padding:10px 12px;text-align:center;">수납 현황</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr style="border-bottom:1px solid var(--border);transition:background .15s;">
+            <td style="padding:11px 12px;font-weight:700;color:var(--gold);">${esc(r.unit)}</td>
+            <td style="padding:11px 12px;"><strong>${esc(r.biz)}</strong> <span style="font-size:11px;color:var(--text3);">(${esc(r.name)})</span></td>
+            <td style="padding:11px 12px;font-family:'DM Mono',monospace;color:var(--text2);">${esc(r.bizNo)}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;">${r.deposit ? fmt(r.deposit) : '-'}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;">${fmt(r.rentNet)}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;">${fmt(r.mgmtNet + r.elecNet)}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--gold);">${fmt(r.taxableNet)}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;color:var(--gold2);">${fmt(r.vat)}</td>
+            <td style="padding:11px 12px;text-align:right;font-family:'DM Mono',monospace;color:var(--text3);">${fmt(r.exempt)}</td>
+            <td style="padding:11px 12px;text-align:center;">
+              <span style="display:inline-block;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid ${r.issuedCount === 3 ? 'var(--green)' : 'rgba(201,168,76,.4)'};color:${r.issuedCount === 3 ? 'var(--green)' : 'var(--gold)'};">
+                ${r.issuedCount === 3 ? '3건 완료' : r.issuedCount + '/3건'}
+              </span>
+            </td>
+            <td style="padding:11px 12px;text-align:center;">
+              ${r.unpaidSum > 0 ? `<span style="color:var(--red);font-weight:700;font-size:11px;">${fmt(r.unpaidSum)} 연체</span>` : `<span style="color:var(--green);font-size:11px;">완납</span>`}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border2);color:var(--text);">
+          <td colspan="3" style="padding:12px;text-align:center;">합 계 (${rows.length}개 호실)</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;">-</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;">${fmt(rows.reduce((s, r) => s + r.rentNet, 0))}</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;">${fmt(rows.reduce((s, r) => s + r.mgmtNet + r.elecNet, 0))}</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;color:var(--gold);">${fmt(totalTaxableNet)}</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;color:var(--gold2);">${fmt(totalTaxableVat)}</td>
+          <td style="padding:12px;text-align:right;font-family:'DM Mono',monospace;color:var(--text3);">${fmt(totalExempt)}</td>
+          <td colspan="2" style="padding:12px;text-align:center;color:var(--gold);">공급대가 총합: ${fmt(totalGross)}</td>
+        </tr>
+      </tfoot>
+    `;
+  }
+}
+
+function exportTaxCsv() {
+  const quarters = getAvailableQuarters();
+  const selQ = quarters.find(q => q.key === (selTaxQuarter || quarters[0]?.key)) || quarters[0];
+  if (!selQ) return;
+
+  const header = ['호수', '상호명', '대표자명', '사업자등록번호', '보증금(원)', '3개월 월세 공급가(원)', '3개월 관리비·전기 공급가(원)', '과세 공급가액 합계(원)', '부가가치세(원)', '수도·면세·실비 합계(원)', '공급대가 총합계(원)', '전자세금계산서 발급건수', '체납액(원)'];
+  
+  const activeTenants = tenants.filter(t => !t.archived);
+  const rows = activeTenants.map(t => {
+    let rentNet = 0, mgmtNet = 0, elecNet = 0, waterSum = 0, elevSum = 0, issued = 0, unpaid = 0;
+    selQ.months.forEach(mk => {
+      const b = (bills[mk] || {})[t.id] || {};
+      const bt = billTenant(t, b);
+      const chg = RentalBilling.charges(bt, b);
+      rentNet += (Number(bt.rent) || 0);
+      mgmtNet += (Number(bt.mgmt) || 0);
+      elecNet += (b.electricityNA ? 0 : (Number(b.electricity) || 0));
+      waterSum += (chg.pay_water || 0);
+      elevSum += (chg.pay_elev || 0);
+      if (b.invoiceIssued) issued++;
+      const timing = Object.keys(b).length ? RentalBilling.historicalPayment(bt, b, Number(mk.slice(0, 4)), Number(mk.slice(5, 7)), new Date()) : null;
+      if (timing?.summary?.overdue) unpaid += timing.summary.overdue;
+    });
+    const taxable = rentNet + mgmtNet + elecNet;
+    const vat = withVat(taxable) - taxable;
+    const exempt = waterSum + elevSum;
+    return [
+      t.unit,
+      t.biz || '',
+      t.repName || t.name,
+      t.bizNo || '',
+      t.deposit ? String(t.deposit) : '0',
+      String(rentNet),
+      String(mgmtNet + elecNet),
+      String(taxable),
+      String(vat),
+      String(exempt),
+      String(taxable + vat + exempt),
+      `${issued}/3건`,
+      String(unpaid)
+    ];
+  });
+
+  const csvContent = '\uFEFF' + [header, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `다인빌딩_세무집계표_${selQ.year}년_${selQ.quarter}분기.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`${selQ.quarter}분기 세무 집계표 CSV를 다운로드했습니다.`);
+}
+
+function printTaxSummary() {
+  window.print();
 }
 
 async function saveWaterRatio() {
@@ -2167,7 +2534,43 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(storageFault)showDataNotice('저장된 데이터를 읽지 못했습니다. 원본은 보존했습니다. 백업 파일로 복원하거나 손상 원본을 내보내주세요.');
   updateLiveDate();
   setInterval(updateLiveDate, 60000);
+  setTimeout(checkBackgroundCloudSync, 1000);
 });
+
+async function checkBackgroundCloudSync() {
+  if (!cloudEnabled || isDemo || cloudDirty || storageFault || conflictingTab || persistenceBusy || syncBusy) return;
+  if (!navigator.onLine) return;
+  try {
+    const remote = await cloudRequest();
+    if (!supportsSafeSync(remote)) return;
+    if (cloudBaseRevision && remote.revision !== cloudBaseRevision) {
+      const remoteData = RentalCore.validateData(remote.data);
+      const localData = RentalCore.validateData(currentData());
+      if (JSON.stringify(remoteData) === JSON.stringify(localData)) {
+        cloudBaseRevision = remote.revision;
+        await withStorageLock(() => {
+          expectedStorageToken = RentalCore.persistChecked(appStorage, currentData(), expectedStorageToken,
+            {cloudPending: false, cloudBaseRevision});
+        });
+      } else if (!cloudDirty) {
+        await withStorageLock(() => {
+          expectedStorageToken = RentalCore.persistChecked(appStorage, remoteData, expectedStorageToken,
+            {cloudPending: false, cloudBaseRevision: remote.revision});
+          assignData(remoteData);
+          lastCommitted = JSON.parse(JSON.stringify(remoteData));
+        });
+        cloudBaseRevision = remote.revision;
+        refreshDataViews();
+        syncUI('saved');
+      }
+    }
+  } catch (ignored) {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkBackgroundCloudSync();
+});
+window.addEventListener('pageshow', () => checkBackgroundCloudSync());
 // PWA metadata and worker are optional; local files need neither URL.
 if(location.protocol==='http:' || location.protocol==='https:') {
   const manifest=document.createElement('link');

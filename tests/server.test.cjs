@@ -37,8 +37,9 @@ function server(options={}) {
   const docId='status-doc-1';
   const body=new Body(options.documentTexts||['사용자 메모 위','[RENTAL_CURRENT_STATUS_BEGIN]','이전 자동 내용','[RENTAL_CURRENT_STATUS_END]','사용자 메모 아래']);
   const document={getId:()=>docId,getUrl:()=>`https://docs.google.com/document/d/${docId}/edit`,getBody:()=>body,saveAndClose:()=>{}};
-  const DocumentApp={ElementType:{PARAGRAPH:'PARAGRAPH'},ParagraphHeading:{HEADING1:'HEADING1',HEADING2:'HEADING2'},openById:id=>{if(fail==='docs'||id!==docId)throw Error('document unavailable');return document;},create:()=>{if(fail==='docs')throw Error('document unavailable');return document;}};
-  const DriveApp={getFilesByName:()=>({hasNext:()=>false,next:()=>null})};
+  const defaultStatusDocumentId='1-HZYrBDD8HPZYO8sNCy33Q298DJ91LJIJAWRuWdQgFI';
+  const DocumentApp={ElementType:{PARAGRAPH:'PARAGRAPH'},ParagraphHeading:{HEADING1:'HEADING1',HEADING2:'HEADING2'},openById:id=>{if(fail==='docs'||(id!==docId&&id!==defaultStatusDocumentId))throw Error('document unavailable');return document;},create:()=>{throw Error('unexpected document creation');}};
+  const DriveApp={getFilesByName:()=>{throw Error('unexpected filename lookup');}};
   const calendarEvents=new Map();let calendarSequence=0;
   const dateKey=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   class CalendarEvent {
@@ -112,4 +113,5 @@ test('Calendar permission and API failures are isolated from DB and reject stale
 test('generated document replaces only marked region and preserves user text',()=>{const s=server(),r=s.request({tenants:[{id:'t1',name:'임차인',unit:'201호',payday:'15일',rent:100000,mgmt:10000}],bills:{}});assert.equal(s.post(r).docs.status,'ok');const values=s.body.children.map(child=>child.getText());assert.equal(values[0],'사용자 메모 위');assert.equal(values.at(-1),'사용자 메모 아래');assert.ok(values.includes('201호 · 임차인'));assert.ok(!values.includes('이전 자동 내용'));});
 test('current status omits archived historical tenants',()=>{const s=server(),r=s.request({tenants:[{id:'old',name:'이전 임차인',unit:'201호',archived:true}],bills:{}});assert.equal(s.post(r).docs.status,'ok');assert.ok(!s.body.children.some(child=>child.getText().includes('이전 임차인')));});
 test('missing configured document ID reports an error without creating a replacement',()=>{const s=server({properties:{RENTAL_STATUS_DOCUMENT_ID:'missing-doc'}}),ack=s.post(s.request());assert.equal(ack.status,'ok');assert.equal(ack.docs.status,'error');assert.equal(s.props.get('RENTAL_STATUS_DOCUMENT_ID'),'missing-doc');});
+test('missing document property restores the fixed operating ID and ignores document title',()=>{const s=server({existingDocument:false}),ack=s.post(s.request());assert.equal(ack.status,'ok');assert.equal(ack.docs.status,'ok');assert.equal(s.props.get('RENTAL_STATUS_DOCUMENT_ID'),'1-HZYrBDD8HPZYO8sNCy33Q298DJ91LJIJAWRuWdQgFI');});
 test('corrupt persisted data is never replaced and busy lock prevents writes',()=>{const s=server(),r=s.request();s.corrupt('{broken');assert.equal(s.post(r).status,'error');assert.equal(s.raw(),'{broken');const busy=server();busy.hold(true);assert.equal(busy.post(busy.request()).status,'busy');assert.equal(busy.writes(),0);});

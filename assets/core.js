@@ -85,7 +85,7 @@
       if (t.deposit != null && t.deposit !== '') number(t.deposit, '보증금', true);
       if (t.audit != null) validateAudit(t.audit);
       if (typeof t.unit !== 'string') fail('세입자 호수를 확인해주세요.');
-      for (const key of ['biz', 'contract', 'contract_first', 'payday', 'renew', 'paytype']) {
+      for (const key of ['biz', 'contract', 'contract_first', 'payday', 'renew', 'paytype', 'bizNo', 'repName', 'email']) {
         if (t[key] != null && typeof t[key] !== 'string') fail(`세입자.${key}: 문자열이 필요합니다.`);
       }
       if (t.mgmtItems !== undefined) {

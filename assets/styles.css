@@ -452,3 +452,22 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .expense-item { flex-wrap: wrap; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ───────────────────────────────────────
+   세무 집계 & 인쇄 스타일
+─────────────────────────────────────── */
+.tax-table th { font-weight: 700; white-space: nowrap; }
+.tax-table td { white-space: nowrap; }
+.tax-table tbody tr:hover { background: rgba(201,168,76,0.04); }
+@media print {
+  body { background: #fff !important; color: #000 !important; padding-bottom: 0 !important; }
+  .workspace-sidebar, .header, .section-toolbar button, #tax-quarter-select, .pill-nav { display: none !important; }
+  .content { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+  .section { display: none !important; }
+  #section-tax { display: block !important; }
+  .card { border: 1px solid #ccc !important; background: #fff !important; color: #000 !important; box-shadow: none !important; }
+  .tax-table { color: #000 !important; }
+  .tax-table th, .tax-table td { border: 1px solid #ddd !important; color: #000 !important; font-size: 10pt !important; }
+  .tax-table thead tr { background: #f0f0f0 !important; }
+  .metric-card { border: 1px solid #ccc !important; background: #fafafa !important; color: #000 !important; }
+}

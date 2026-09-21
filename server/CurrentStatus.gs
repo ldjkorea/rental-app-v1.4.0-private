@@ -1,5 +1,6 @@
 /* Human-readable projection of the verified DB; never writes rental data. */
-var STATUS_TITLE = '임대관리_현재현황';
+var STATUS_TITLE = '임대관리_현재현황'; // Display heading only; never used to locate the document.
+var STATUS_DOCUMENT_ID = '1-HZYrBDD8HPZYO8sNCy33Q298DJ91LJIJAWRuWdQgFI';
 var STATUS_BEGIN = '[RENTAL_CURRENT_STATUS_BEGIN]';
 var STATUS_END = '[RENTAL_CURRENT_STATUS_END]';
 
@@ -47,16 +48,15 @@ function statusLines_(data, revision, now) {
 }
 function statusDocument_(props) {
   var id = (props.getProperty('RENTAL_STATUS_DOCUMENT_ID') || '').trim();
-  if (id) return DocumentApp.openById(id); // Never create another file on an access/ID error.
-  var files = DriveApp.getFilesByName(STATUS_TITLE), matches = [];
-  while (files.hasNext()) {
-    var file = files.next();
-    if (file.getMimeType() === 'application/vnd.google-apps.document' && !file.isTrashed()) matches.push(file.getId());
-    if (matches.length > 1) throw new Error('동일한 이름의 현재현황 문서가 여러 개입니다. RENTAL_STATUS_DOCUMENT_ID를 지정해주세요.');
+  if (!id) {
+    id = STATUS_DOCUMENT_ID;
+    props.setProperty('RENTAL_STATUS_DOCUMENT_ID', id);
   }
-  var doc = matches.length ? DocumentApp.openById(matches[0]) : DocumentApp.create(STATUS_TITLE);
-  props.setProperty('RENTAL_STATUS_DOCUMENT_ID', doc.getId());
-  return doc;
+  try {
+    return DocumentApp.openById(id);
+  } catch (err) {
+    throw new Error('현재현황 문서를 열 수 없습니다. RENTAL_STATUS_DOCUMENT_ID를 확인하세요 (' + id + '): ' + String(err.message || err));
+  }
 }
 function statusBodies_(doc) {
   if (typeof doc.getTabs !== 'function') return [doc.getBody()];
