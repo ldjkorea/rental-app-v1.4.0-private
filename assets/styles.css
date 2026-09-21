@@ -471,3 +471,108 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .tax-table thead tr { background: #f0f0f0 !important; }
   .metric-card { border: 1px solid #ccc !important; background: #fafafa !important; color: #000 !important; }
 }
+
+/* ───────────────────────────────────────
+   정산 탭 & 고지서 탭 UI 고도화 스타일
+─────────────────────────────────────── */
+/* 정산 실시간 요약 배너 */
+.sett-live-card {
+  background: linear-gradient(135deg, rgba(201,168,76,.12), rgba(201,168,76,.03));
+  border: 1px solid rgba(201,168,76,.35);
+  border-radius: var(--r2);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sett-live-lbl { font-size: 11px; color: var(--text2); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.sett-live-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.sett-live-val { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 700; color: var(--gold); }
+
+/* 고지서 세입자 칩 고도화 */
+.chip-row-modern {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.tenant-chip-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s ease;
+}
+.tenant-chip-card:hover { border-color: rgba(201,168,76,.4); }
+.tenant-chip-card.active {
+  background: var(--goldbg);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.chip-unit { font-size: 11px; font-weight: 700; color: var(--gold); font-family: 'DM Mono', monospace; }
+.chip-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.chip-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.chip-badge.paid { background: rgba(76,175,125,.18); color: var(--green); }
+.chip-badge.unpaid { background: rgba(230,126,34,.18); color: #e67e22; }
+.chip-badge.partial { background: rgba(201,168,76,.18); color: var(--gold); }
+.chip-badge.empty { background: var(--surface2); color: var(--text3); }
+
+/* 고지서 모던 밸런스 바 */
+.bill-summary-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--surface2);
+  border-radius: var(--r2);
+  border: 1px solid var(--border2);
+}
+.bill-sum-item { text-align: center; }
+.bill-sum-item .sum-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.bill-sum-item .sum-val { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 700; }
+.bill-sum-item.total .sum-val { color: var(--gold); }
+.bill-sum-item.received .sum-val { color: var(--green); }
+.bill-sum-item.unpaid .sum-val { color: var(--red); }
+@media (max-width: 480px) {
+  .bill-summary-bar { grid-template-columns: 1fr; gap: 8px; text-align: left; }
+  .bill-sum-item { display: flex; justify-content: space-between; align-items: center; }
+}
+
+/* 고지서 액션 버튼 강화 */
+.bill-actions-modern {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.bill-actions-modern .btn-kakao-primary {
+  flex: 1.5;
+  background: linear-gradient(135deg, #c9a84c, #b38f38);
+  color: #000;
+  font-weight: 700;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: var(--r2);
+  cursor: pointer;
+  font-size: 14px;
+}
+.bill-actions-modern .btn-kakao-primary:hover { filter: brightness(1.08); }
+

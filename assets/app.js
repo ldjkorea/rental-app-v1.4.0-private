@@ -881,6 +881,8 @@ function renderSettTab(){
   settlementReview=null;settCalcResult=null;
   const key=mk();const si=settInputs[key]||{};
   const done=si.confirmed===true;
+  const isOddMonth=(cM%2===1);
+  const waterRecText=isOddMonth?'홀수달(부과월 권장)':'짝수달(미부과월 권장)';
   // 설정 탭 내 embed 영역에 정산 HTML 삽입
   const embed=document.getElementById('settings-sett-embed');
   if(embed){
@@ -903,33 +905,42 @@ function renderSettTab(){
       <div class="step-node"><div class="step-dot" id="sdot3">3</div><div class="step-lbl" id="slbl3">확정저장</div></div>
     </div>
     <div id="sett-step1">
+      <div class="sett-live-card">
+        <div>
+          <div class="sett-live-lbl">이번 달 입력 공용비용 총액</div>
+          <div class="sett-live-sub" id="sett-live-sub">전기 + 수도 + 엘리베이터 + 오물비 실시간 합산</div>
+        </div>
+        <div class="sett-live-val" id="sett-live-total">₩0</div>
+      </div>
       <div class="card">
         <div class="card-header"><div><div class="card-title">⚡ 공용전기세</div><div class="card-sub">2·3층 각 35,000원 고정 / 4층 나머지</div></div></div>
-        <div class="field"><label>총 공급가 (원, 부가세 제외)</label><input type="number" id="sett-elec" placeholder="예: 115,000" value="${esc(si.elec||'')}"></div>
+        <div class="field"><label>총 공급가 (원, 부가세 제외)</label><input type="number" id="sett-elec" placeholder="예: 115,000" value="${esc(si.elec||'')}" oninput="updateSettLiveTotal()"></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <div><div class="card-title">💧 수도요금 <span style="font-size:10px;color:var(--gold);background:var(--goldbg);padding:2px 7px;border-radius:50px;">격월</span></div></div>
+          <div>
+            <div class="card-title">💧 수도요금 <span style="font-size:10px;color:var(--gold);background:var(--goldbg);padding:2px 7px;border-radius:50px;">격월 · ${waterRecText}</span></div>
+          </div>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);">
-            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields()" style="accent-color:var(--gold);" ${si.waterActive?'checked':''}>이번 달 청구
+            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields();updateSettLiveTotal();" style="accent-color:var(--gold);" ${si.waterActive?'checked':''}>이번 달 청구
           </label>
         </div>
         <div id="sett-water-fields" style="display:${si.waterActive?'block':'none'};">
           <div class="field-row">
-            <div class="field"><label>총 청구금액</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}"></div>
+            <div class="field"><label>총 청구금액</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateSettLiveTotal()"></div>
             <div class="field"><label>건물 총 사용량(톤)</label><input type="number" id="sett-water-usage" placeholder="예: 177" value="${esc(si.waterUsage||'')}"></div>
           </div>
           <div class="field"><label>1층 사용량(톤)</label><input type="number" id="sett-water-f1" placeholder="예: 41" value="${esc(si.waterF1||'')}"></div>
         </div>
-        <div id="sett-water-off" style="display:${si.waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">이번 달 수도요금 청구 없음</div>
+        <div id="sett-water-off" style="display:${si.waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">이번 달 수도요금 청구 없음 (${waterRecText})</div>
       </div>
       <div class="card">
         <div class="card-header"><div><div class="card-title">🛗 엘리베이터</div><div class="card-sub">2·3·4층 실비 배분 · 원 단위 잔액 보존</div></div></div>
-        <div class="field"><label for="sett-elev-mode">청구서 금액 기준</label><select id="sett-elev-mode"><option value="gross" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'':'selected'}>최종 청구액 · 부가세 포함</option><option value="net" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'selected':''}>공급가 · 부가세 별도</option></select></div><div class="field"><label>실제 청구서 금액 (원)</label><input type="number" id="sett-elev" placeholder="예: 150,000" value="${esc(si.elev||'')}"></div>
+        <div class="field"><label for="sett-elev-mode">청구서 금액 기준</label><select id="sett-elev-mode"><option value="gross" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'':'selected'}>최종 청구액 · 부가세 포함</option><option value="net" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'selected':''}>공급가 · 부가세 별도</option></select></div><div class="field"><label>실제 청구서 금액 (원)</label><input type="number" id="sett-elev" placeholder="예: 150,000" value="${esc(si.elev||'')}" oninput="updateSettLiveTotal()"></div>
       </div>
       <div class="card">
         <div class="card-header"><div><div class="card-title">🗑️ 오물처리비</div><div class="card-sub">입력 시에만 부과</div></div></div>
-        <div class="field"><label>총 금액 (원) — 비워두면 미부과</label><input type="number" id="sett-waste" placeholder="비워두면 미부과" value="${esc(si.waste||'')}"></div>
+        <div class="field"><label>총 금액 (원) — 비워두면 미부과</label><input type="number" id="sett-waste" placeholder="비워두면 미부과" value="${esc(si.waste||'')}" oninput="updateSettLiveTotal()"></div>
       </div>
       <button class="btn-sett" onclick="calcSettlement()">🧮 배분 계산하기</button>
     </div>
@@ -951,7 +962,18 @@ function renderSettTab(){
       <button class="btn" onclick="backToStep1()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);width:100%;justify-content:center;margin-top:8px;">← 다시 입력</button>
     </div>`;
   }
+  updateSettLiveTotal();
   goSettStep(1);
+}
+function updateSettLiveTotal(){
+  const elec=Number(document.getElementById('sett-elec')?.value||0);
+  const waterActive=document.getElementById('sett-water-chk')?.checked;
+  const water=waterActive?Number(document.getElementById('sett-water-total')?.value||0):0;
+  const elev=Number(document.getElementById('sett-elev')?.value||0);
+  const waste=Number(document.getElementById('sett-waste')?.value||0);
+  const total=elec+water+elev+waste;
+  const el=document.getElementById('sett-live-total');
+  if(el)el.textContent='₩'+total.toLocaleString('ko-KR');
 }
 function toggleWaterFields(){
   const on=document.getElementById('sett-water-chk')?.checked;
@@ -1402,17 +1424,36 @@ function renderExpenseList(){
 ════════════════════════════════════════ */
 function renderHistChips(){
   const el=document.getElementById('hist-chips');if(!el)return;
-  if(!historyTenants().length){el.innerHTML=`<div style="color:var(--text2);font-size:13px;padding:8px 0;">세입자를 먼저 추가해주세요</div>`;return;}
-  el.innerHTML=historyTenants().map(t=>`<div class="chip ${selTenantId===t.id?'active':''}" onclick="selectHistTenant('${t.id}')">${esc(t.biz||t.name)}${t.archived?' · 보관':''}</div>`).join('');
+  const list=historyTenants();
+  if(!list.length){el.innerHTML=`<div style="color:var(--text2);font-size:13px;padding:8px 0;">세입자를 먼저 추가해주세요</div>`;return;}
+  const month=`${histY}-${String(histM).padStart(2,'0')}`;
+  el.innerHTML=`<div class="chip-row-modern">`+list.map(t=>{
+    const bill=bills[month]?.[t.id];
+    let badge='';
+    if(!bill){
+      badge='<span class="chip-badge empty">미작성</span>';
+    }else{
+      const st=RentalBilling.payment(t,bill);
+      if(st.complete)badge='<span class="chip-badge paid">✓ 완납</span>';
+      else if(st.received>0)badge='<span class="chip-badge partial">일부</span>';
+      else badge='<span class="chip-badge unpaid">미납</span>';
+    }
+    return `<div class="chip tenant-chip-card ${selTenantId===t.id?'active':''}" onclick="selectHistTenant('${t.id}')">
+      <span class="chip-unit">${esc(t.unit||'')}</span>
+      <span class="chip-name">${esc(t.biz||t.name)}</span>
+      ${badge}
+      ${t.archived?'<span class="chip-badge empty">보관</span>':''}
+    </div>`;
+  }).join('')+`</div>`;
 }
 function selectHistTenant(id){
   if(typeof flushBillDraft==='function')flushBillDraft();selTenantId=id;histY=cY;histM=cM;renderHistChips();renderHistContent();}
 function historyChangeMonth(d){
-  if(typeof flushBillDraft==='function')flushBillDraft();histM+=d;if(histM>12){histM=1;histY++;}if(histM<1){histM=12;histY--;}renderHistContent();}
+  if(typeof flushBillDraft==='function')flushBillDraft();histM+=d;if(histM>12){histM=1;histY++;}if(histM<1){histM=12;histY--;}renderHistChips();renderHistContent();}
 function goToHistory(id){if(typeof flushBillDraft==='function')flushBillDraft();selTenantId=id;histY=cY;histM=cM;switchTab('history');}
 
 function goToBill(id,month){
-  goToHistory(id);[histY,histM]=month.split('-').map(Number);renderHistContent();
+  goToHistory(id);[histY,histM]=month.split('-').map(Number);renderHistChips();renderHistContent();
 }
 function renderHistContent() {
   const tenant=findTenant(selTenantId), con=document.getElementById('hist-content');
@@ -1432,15 +1473,21 @@ function renderHistContent() {
     const info=state.items[item.key];
     return `<div class="charge-row"><span>${item.label}</span><small class="${info.paid?'paid-text':''}">${info.na?'미부과':info.paid?esc(info.date)+' 확인':'입금 미확인'}</small><strong>${fmt(info.na?0:info.amount)}</strong></div>`;
   }).join('');
-  con.innerHTML=`<article class="card bill-document"><div class="bill-heading"><div><span class="eyebrow">MONTHLY STATEMENT</span><h2>${histY}년 ${histM}월 고지서</h2><p>${esc(billTenant(tenant,bill).biz||billTenant(tenant,bill).name)} · ${esc(bill.unitSnapshot??tenant.unit)}</p></div><div class="bill-grand"><small>총 청구액</small><strong>${fmt(state.total)}</strong></div></div>
+  const bt=billTenant(tenant,bill);
+  const taxInfo=bt.bizNo?`<span style="font-size:11px;color:var(--text3);margin-left:6px;">사업자번호: ${esc(bt.bizNo)}</span>`:'';
+  con.innerHTML=`<article class="card bill-document"><div class="bill-heading"><div><span class="eyebrow">MONTHLY STATEMENT</span><h2>${histY}년 ${histM}월 고지서</h2><p>${esc(bt.biz||bt.name)} · ${esc(bill.unitSnapshot??tenant.unit)} ${taxInfo}</p></div><div class="bill-grand"><small>총 청구액</small><strong>${fmt(state.total)}</strong></div></div>
     ${bill.snapshotEstimated?.length?'<p class="data-warning">과거 원본에 없는 계약·금액 정보 일부를 현재 정보로 보완했습니다. 과거 청구서와 대조가 필요합니다.</p>':''}
-    <div class="bill-balance"><span>입금 확인 <strong>${fmt(state.received)}</strong></span><span>미확인 금액 <strong>${fmt(state.unpaid)}</strong></span></div>
+    <div class="bill-summary-bar bill-balance">
+      <div class="bill-sum-item total"><div class="sum-label">총 청구액</div><div class="sum-val">${fmt(state.total)}</div></div>
+      <div class="bill-sum-item received"><div class="sum-label">입금 확인액</div><div class="sum-val" style="color:var(--green);">${fmt(state.received)}</div></div>
+      <div class="bill-sum-item unpaid"><div class="sum-label">미확인 잔액</div><div class="sum-val" style="color:${state.unpaid>0?'var(--red)':'var(--text2)'};">${fmt(state.unpaid)}</div></div>
+    </div>
     <div class="charge-list">${rows}</div>
     <details class="mgmt-detail"><summary>고정 관리비 세부 항목</summary>${buildMgmtBreakdownHtml(billTenant(tenant,bill))}</details>
     <div class="payment-grid">${stamp('rent','월세')}${stamp('mgmt','관리비·공과금')}</div>
     <p class="card-sub">관리비 도장은 고정 관리비와 전기·수도·엘리베이터·오물비 전체를 완납 처리합니다. 항목별 입금 확인은 고지서 수정에서 관리할 수 있습니다.</p>
     <label class="invoice-check"><input type="checkbox" ${bill.invoiceIssued?'checked':''} onchange="setInvoiceIssued(this.checked)"> 세금계산서 발급 완료 · 안내 메시지에 반영</label>
-    <div class="bill-actions"><button class="btn btn-secondary" onclick="editThisMonth()">✏️ 수정</button><button class="btn btn-primary" onclick="previewKakao()">💬 카카오</button><button class="btn btn-secondary" onclick="printCurrentBill()">인쇄 / PDF</button></div>
+    <div class="bill-actions bill-actions-modern"><button class="btn-kakao-primary" onclick="previewKakao()">💬 카카오톡 / 문자 청구서 발송</button><button class="btn btn-secondary" onclick="editThisMonth()">✏️ 고지서 수정</button><button class="btn btn-secondary" onclick="printCurrentBill()">🖨️ 인쇄 / PDF</button></div>
     ${(bill.audit||[]).length?`<details class="audit-details"><summary>변경 이력 ${(bill.audit||[]).length}건</summary>${[...bill.audit].reverse().map(entry=>`<p><time>${esc(new Date(entry.at).toLocaleString('ko-KR'))}</time> ${esc(entry.action)} · ${esc(entry.detail)}</p>`).join('')}</details>`:''}
     </article>`;
 }
