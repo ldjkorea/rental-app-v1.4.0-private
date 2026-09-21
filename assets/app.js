@@ -882,7 +882,17 @@ function renderSettTab(){
   const key=mk();const si=settInputs[key]||{};
   const done=si.confirmed===true;
   const isOddMonth=(cM%2===1);
+  // 수도요금: 사용자 설정이 없으면 홀수달(1,3,5,7,9,11월) 기본 열림, 짝수달 기본 닫힘
+  const waterActive=si.waterActive!==undefined?Boolean(si.waterActive):isOddMonth;
   const waterRecText=isOddMonth?'홀수달(부과월 권장)':'짝수달(미부과월 권장)';
+
+  // 엘리베이터: 따로 수정하지 않으면 2,3,4,5층 모두 50,000원에 부가세 5,000원(총 55,000원) 자동
+  const elevTenants=activeTenants().filter(t=>getFloor(t.unit)>=2);
+  const defaultElevCount=elevTenants.length||3;
+  const defaultElevSupply=defaultElevCount*50000;
+  const elevVal=(si.elev!==undefined&&si.elev!=='')?si.elev:String(defaultElevSupply);
+  const elevModeVal=si.elevMode||'net';
+
   // 설정 탭 내 embed 영역에 정산 HTML 삽입
   const embed=document.getElementById('settings-sett-embed');
   if(embed){
@@ -913,8 +923,9 @@ function renderSettTab(){
         <div class="sett-live-val" id="sett-live-total">₩0</div>
       </div>
       <div class="card">
-        <div class="card-header"><div><div class="card-title">⚡ 공용전기세</div><div class="card-sub">2·3층 각 35,000원 고정 / 4층 나머지</div></div></div>
+        <div class="card-header"><div><div class="card-title">⚡ 공용전기세</div><div class="card-sub">총 공급가 입력 시 2·3층 각 35,000원(VAT별도) 고정 / 4층 나머지 (+10% VAT 자동 청구)</div></div></div>
         <div class="field"><label>총 공급가 (원, 부가세 제외)</label><input type="number" id="sett-elec" placeholder="예: 115,000" value="${esc(si.elec||'')}" oninput="updateSettLiveTotal()"></div>
+        <div id="sett-elec-preview" style="font-size:11px;color:var(--text2);margin-top:-4px;padding:7px 11px;background:var(--surface2);border-radius:8px;line-height:1.5;">💡 2·3층 각 35,000원(+VAT 3,500원) 고정 · 4층 잔여 공급가 및 10% VAT 청구</div>
       </div>
       <div class="card">
         <div class="card-header">
@@ -922,21 +933,26 @@ function renderSettTab(){
             <div class="card-title">💧 수도요금 <span style="font-size:10px;color:var(--gold);background:var(--goldbg);padding:2px 7px;border-radius:50px;">격월 · ${waterRecText}</span></div>
           </div>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);">
-            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields();updateSettLiveTotal();" style="accent-color:var(--gold);" ${si.waterActive?'checked':''}>이번 달 청구
+            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields();updateSettLiveTotal();" style="accent-color:var(--gold);" ${waterActive?'checked':''}>이번 달 청구
           </label>
         </div>
-        <div id="sett-water-fields" style="display:${si.waterActive?'block':'none'};">
+        <div id="sett-water-fields" style="display:${waterActive?'block':'none'};">
           <div class="field-row">
-            <div class="field"><label>총 청구금액</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateSettLiveTotal()"></div>
+            <div class="field"><label>총 청구금액 (원)</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateSettLiveTotal()"></div>
             <div class="field"><label>건물 총 사용량(톤)</label><input type="number" id="sett-water-usage" placeholder="예: 177" value="${esc(si.waterUsage||'')}"></div>
           </div>
           <div class="field"><label>1층 사용량(톤)</label><input type="number" id="sett-water-f1" placeholder="예: 41" value="${esc(si.waterF1||'')}"></div>
         </div>
-        <div id="sett-water-off" style="display:${si.waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">이번 달 수도요금 청구 없음 (${waterRecText})</div>
+        <div id="sett-water-off" style="display:${waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">
+          <div>이번 달 수도요금 청구 없음 (${waterRecText})</div>
+          <div style="margin-top:6px;"><button type="button" onclick="enableWaterFieldsManually()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--gold);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 이번 달 수도요금 예외 입력하기</button></div>
+        </div>
       </div>
       <div class="card">
-        <div class="card-header"><div><div class="card-title">🛗 엘리베이터</div><div class="card-sub">2·3·4층 실비 배분 · 원 단위 잔액 보존</div></div></div>
-        <div class="field"><label for="sett-elev-mode">청구서 금액 기준</label><select id="sett-elev-mode"><option value="gross" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'':'selected'}>최종 청구액 · 부가세 포함</option><option value="net" ${si.elevMode==='net'||(si.elev&&!si.elevMode)?'selected':''}>공급가 · 부가세 별도</option></select></div><div class="field"><label>실제 청구서 금액 (원)</label><input type="number" id="sett-elev" placeholder="예: 150,000" value="${esc(si.elev||'')}" oninput="updateSettLiveTotal()"></div>
+        <div class="card-header"><div><div class="card-title">🛗 엘리베이터</div><div class="card-sub">2·3·4·5층 각 50,000원(부가세 5,000원 별도) 자동 적용 · 원 단위 잔액 보존</div></div></div>
+        <div class="field"><label for="sett-elev-mode">청구서 금액 기준</label><select id="sett-elev-mode" onchange="updateSettLiveTotal()"><option value="net" ${elevModeVal==='net'?'selected':''}>공급가 · 부가세 별도 (층당 50,000원 기준)</option><option value="gross" ${elevModeVal==='gross'?'selected':''}>최종 청구액 · 부가세 포함 (층당 55,000원 기준)</option></select></div>
+        <div class="field"><label>실제 청구서 금액 (원)</label><input type="number" id="sett-elev" placeholder="예: 150,000" value="${esc(elevVal)}" oninput="updateSettLiveTotal()"></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:-4px;padding:7px 11px;background:var(--surface2);border-radius:8px;line-height:1.5;">💡 미수정 시 2·3·4·5층 모두 50,000원(+VAT 5,000원 = 55,000원) 자동 청구</div>
       </div>
       <div class="card">
         <div class="card-header"><div><div class="card-title">🗑️ 오물처리비</div><div class="card-sub">입력 시에만 부과</div></div></div>
@@ -952,7 +968,7 @@ function renderSettTab(){
         </div>
         <div style="overflow-x:auto;">
           <table class="result-tbl"><thead><tr>
-            <th>세입자</th><th>전기</th><th>수도</th><th>엘베</th><th>오물</th><th>소계</th>
+            <th style="text-align:left;">세입자</th><th>⚡ 전기</th><th>💧 수도</th><th>🛗 엘베</th><th>🗑️ 오물</th><th>소계</th>
           </tr></thead>
           <tbody id="sett-tbody"></tbody></table>
         </div>
@@ -965,6 +981,10 @@ function renderSettTab(){
   updateSettLiveTotal();
   goSettStep(1);
 }
+function enableWaterFieldsManually(){
+  const chk=document.getElementById('sett-water-chk');
+  if(chk){ chk.checked=true; toggleWaterFields(); updateSettLiveTotal(); }
+}
 function updateSettLiveTotal(){
   const elec=Number(document.getElementById('sett-elec')?.value||0);
   const waterActive=document.getElementById('sett-water-chk')?.checked;
@@ -974,6 +994,18 @@ function updateSettLiveTotal(){
   const total=elec+water+elev+waste;
   const el=document.getElementById('sett-live-total');
   if(el)el.textContent='₩'+total.toLocaleString('ko-KR');
+
+  const elecPrev=document.getElementById('sett-elec-preview');
+  if(elecPrev){
+    if(elec>=70000){
+      const rest=elec-70000;
+      elecPrev.innerHTML=`배분: <strong>2층 35,000원</strong>(+VAT 3,500) · <strong>3층 35,000원</strong>(+VAT 3,500) · <strong>4층 ${rest.toLocaleString('ko-KR')}원</strong>(+VAT ${Math.round(rest*0.1).toLocaleString('ko-KR')})`;
+    } else if(elec>0){
+      elecPrev.innerHTML=`<span style="color:var(--red);">⚠️ 2·3층 고정액(70,000원) 이상 입력해주세요.</span>`;
+    } else {
+      elecPrev.innerHTML=`💡 2·3층 각 35,000원(+VAT 3,500원) 고정 · 4층 잔여 공급가 및 10% VAT 청구`;
+    }
+  }
 }
 function toggleWaterFields(){
   const on=document.getElementById('sett-water-chk')?.checked;
@@ -1003,18 +1035,69 @@ function renderSettlementReview() {
   const {totals,balanced} = RentalBilling.reconcile(result);
   document.getElementById('sett-tbody').innerHTML = result.rows.map((row,index) => {
     const values = ['elec','water','elev','waste'].map(key => row[key]===null?null:key==='elec'?withVat(row[key]):row[key]);
-    const cells = values.map((value,i) => {
-      const key=['elec','water','elev','waste'][i];
-      if(value===null)return '<td class="na-cell">—</td>';
-      if((key==='elev'&&row.floor>1)||key==='waste')return `<td><input aria-label="${esc(row.unit)} ${key==='elev'?'엘리베이터':'오물비'} 배분액" class="allocation-input" type="number" min="0" step="1" value="${value}" onchange="adjustAllocation(${index},'${key}',this.value)"></td>`;
-      return `<td>${fmtN(value)}</td>`;
-    }).join('');
-    return `<tr><td><strong>${esc(row.unit)}</strong><small>${esc(row.name)}</small></td>${cells}<td class="row-total">${fmtN(values.reduce((a,b)=>a+(b||0),0))}</td></tr>`;
+    const floorLabel = row.floor > 0 ? `${row.floor}F` : '';
+
+    // 세입자 셀 (층수 뱃지 + 상호명 + 호수)
+    const tenantCell = `<td style="text-align:left;vertical-align:middle;">` +
+      `<div style="display:flex;align-items:center;gap:6px;">` +
+        `<span style="display:inline-block;padding:2px 6px;border-radius:5px;background:var(--surface2);border:1px solid var(--border2);color:var(--gold);font-size:10px;font-weight:700;">${floorLabel}</span>` +
+        `<div><strong style="font-size:12px;color:var(--text);">${esc(row.name)}</strong>` +
+        `<small style="display:block;font-size:10px;color:var(--text3);margin-top:1px;">${esc(row.unit)}</small></div>` +
+      `</div>` +
+    `</td>`;
+
+    // 전기 셀: 2·3층 고정, 4층 잔여
+    let elecCell = '<td class="na-cell" style="text-align:right;">—</td>';
+    if (row.elec !== null) {
+      const elecVat = withVat(row.elec);
+      if (row.floor === 2 || row.floor === 3) {
+        elecCell = `<td style="text-align:right;vertical-align:middle;">` +
+          `<div style="font-weight:600;">${fmtN(elecVat)}</div>` +
+          `<div style="font-size:9px;color:var(--text3);margin-top:1px;"><span style="display:inline-block;padding:0 3px;border-radius:3px;background:rgba(201,168,76,.15);color:var(--gold);font-weight:600;">고정</span> 3.5만+세</div></td>`;
+      } else if (row.floor === 4) {
+        elecCell = `<td style="text-align:right;vertical-align:middle;">` +
+          `<div style="font-weight:600;">${fmtN(elecVat)}</div>` +
+          `<div style="font-size:9px;color:var(--text3);margin-top:1px;"><span style="display:inline-block;padding:0 3px;border-radius:3px;background:rgba(76,175,125,.15);color:var(--green);font-weight:600;">잔여</span> ${fmtN(row.elec)}+세</div></td>`;
+      } else {
+        elecCell = `<td style="text-align:right;vertical-align:middle;"><div style="font-weight:600;">${fmtN(elecVat)}</div></td>`;
+      }
+    }
+
+    // 수도 셀
+    let waterCell = '<td class="na-cell" style="text-align:right;">—</td>';
+    if (row.water !== null && row.water > 0) {
+      waterCell = `<td style="text-align:right;vertical-align:middle;">` +
+        `<div style="font-weight:600;">${fmtN(row.water)}</div>` +
+        `<div style="font-size:9px;color:var(--text3);margin-top:1px;">${row.floor===1?'1층 실사용':'지분 배분'}</div></td>`;
+    }
+
+    // 엘리베이터 셀: 기본 50,000원+VAT 5,000원 = 55,000원
+    let elevCell = '<td class="na-cell" style="text-align:right;">—</td>';
+    if (row.floor > 1 && row.elev !== null) {
+      const is55k = (row.elev === 55000);
+      elevCell = `<td style="text-align:right;vertical-align:middle;">` +
+        `<input aria-label="${esc(row.unit)} 엘리베이터 배분액" class="allocation-input" type="number" min="0" step="1" value="${row.elev}" onchange="adjustAllocation(${index},'elev',this.value)">` +
+        `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${is55k?'5만+세 5천':'수동 조정'}</div></td>`;
+    }
+
+    // 오물비 셀
+    let wasteCell = '<td class="na-cell" style="text-align:right;">—</td>';
+    if (row.waste > 0) {
+      wasteCell = `<td style="text-align:right;vertical-align:middle;">` +
+        `<input aria-label="${esc(row.unit)} 오물비 배분액" class="allocation-input" type="number" min="0" step="1" value="${row.waste}" onchange="adjustAllocation(${index},'waste',this.value)"></td>`;
+    }
+
+    const subtotal = values.reduce((a,b)=>a+(b||0),0);
+    const totalCell = `<td class="row-total" style="text-align:right;vertical-align:middle;font-size:12px;font-weight:700;color:var(--gold3);font-variant-numeric:tabular-nums;">${fmtN(subtotal)}</td>`;
+
+    return `<tr>${tenantCell}${elecCell}${waterCell}${elevCell}${wasteCell}${totalCell}</tr>`;
   }).join('') + `<tr class="sum-row"><td>배분 합계</td>${Object.values(totals).map(n=>`<td>${fmtN(n)}</td>`).join('')}<td>${fmtN(Object.values(totals).reduce((a,b)=>a+b,0))}</td></tr>`;
-  document.getElementById('sett-result-sub').textContent = `${result.month} · ${result.rows.length}명 · 최종 청구액 기준`;
-  document.getElementById('sett-note').innerHTML = `<div class="reconcile ${balanced?'balanced':'unbalanced'}">${balanced?'✓ 입력 실비와 배분 합계가 일치합니다.':'합계 차이가 있습니다. 배분액을 조정해주세요.'}</div>` +
+
+  document.getElementById('sett-result-sub').textContent = `${result.month} · ${result.rows.length}개 층 배분 · 최종 청구액(VAT포함) 기준`;
+  document.getElementById('sett-note').innerHTML = `<div class="reconcile ${balanced?'balanced':'unbalanced'}" style="display:flex;align-items:center;gap:6px;font-weight:600;">` +
+    `${balanced?'✓ 입력 실비와 배분 합계가 완벽히 일치합니다 (100% 정합성 검증)':'합계 차이가 있습니다. 배분액을 조정해주세요.'}</div>` +
     `<div class="reconcile-details">${Object.keys(totals).map((key,i)=>`${['전기','수도','엘리베이터','오물비'][i]}: ${fmt(totals[key])} / ${fmt(result.expected[key])}`).join(' · ')}</div>` +
-    '<p class="card-sub">엘리베이터·오물비는 반올림하지 않습니다. 원 단위 잔액은 낮은 층부터 1원씩 배분하며 위 금액을 직접 조정할 수 있습니다.</p>';
+    '<p class="card-sub">엘리베이터(2·3·4·5층 각 50,000원+VAT 5,000원) 및 오물비는 원 단위 잔액까지 오차 없이 배분되며 위 금액을 직접 조정할 수 있습니다.</p>';
   document.getElementById('confirm-settlement').disabled = !balanced;
 }
 function adjustAllocation(index, key, value) {

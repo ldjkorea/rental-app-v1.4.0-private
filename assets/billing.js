@@ -27,7 +27,7 @@
     const rows = tenants.map(t => ({id:t.id, name:t.biz||t.name, unit:t.unit, floor:floorOf(t.unit), elec:null, water:null, elev:null, waste:0}));
     const floors = new Map();
     for (const row of rows) {
-      if (row.floor < 1 || row.floor > 4 || floors.has(row.floor)) throw new Error('현재 배분 기준은 1~4층, 층별 세입자 1명입니다. 호수를 확인해주세요.');
+      if (row.floor < 1 || row.floor > 5 || floors.has(row.floor)) throw new Error('현재 배분 기준은 1~5층, 층별 세입자 1명입니다. 호수를 확인해주세요.');
       floors.set(row.floor, row);
     }
     if (elec) {
