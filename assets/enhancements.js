@@ -120,3 +120,61 @@ window.addEventListener('pagehide',flushBillDraft);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushBillDraft();});
 
 for(const type of ['input','change'])document.addEventListener(type,event=>{if(event.target.matches('input:not([type=file]),select,textarea'))draftVersion++;});
+
+/* ───────────────────────────────────────
+   테마 모드 제어 (토스 스타일 라이트/다크)
+─────────────────────────────────────── */
+function initTheme() {
+  let theme = 'light';
+  try {
+    const saved = localStorage.getItem('rental_app_theme');
+    const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    theme = saved || (prefersDark ? 'dark' : 'light');
+  } catch (e) {}
+  applyTheme(theme, false);
+}
+
+function applyTheme(theme, notify = true) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.setAttribute('data-theme', theme);
+  const icon = document.getElementById('theme-icon');
+  const text = document.getElementById('theme-text');
+  if (icon) icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+  if (text) text.textContent = theme === 'dark' ? '라이트' : '다크';
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) {
+    const label = theme === 'dark' ? '라이트모드로 전환' : '다크모드로 전환';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  }
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', theme === 'dark' ? '#111317' : '#f5f5f0');
+  try { localStorage.setItem('rental_app_theme', theme); } catch (e) {}
+  if (notify && typeof showToast === 'function') {
+    showToast(theme === 'dark' ? '🌙 다크모드로 변경되었습니다.' : '☀️ 라이트모드로 변경되었습니다.');
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next, true);
+}
+
+if (typeof document !== 'undefined') {
+  initTheme();
+  document.addEventListener('DOMContentLoaded', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(current, false);
+  });
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      try {
+        if (!localStorage.getItem('rental_app_theme')) {
+          applyTheme(e.matches ? 'dark' : 'light', false);
+        }
+      } catch (err) {}
+    });
+  }
+}
+

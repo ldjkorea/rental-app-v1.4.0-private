@@ -32,7 +32,7 @@
 
 <header class="header" id="main-header">
   <div class="heading-copy"><span class="eyebrow">PROPERTY MANAGEMENT</span><h1 id="page-title">이번 달 한눈에</h1><p id="live-date-main"></p></div>
-  <div class="header-tools"><div class="month-nav"><button class="mnav-btn" aria-label="이전 달" onclick="changeMonth(-1)">‹</button><button class="mnav-label" id="currentMonth" onclick="openMonthPicker()"></button><button class="mnav-btn" aria-label="다음 달" onclick="changeMonth(1)">›</button></div><button class="today-button" onclick="quickPick(new Date().getFullYear(),new Date().getMonth()+1)">이번 달</button><span id="sync-dot" class="sync-dot" role="status" aria-live="polite"></span></div>
+  <div class="header-tools"><div class="month-nav"><button class="mnav-btn" aria-label="이전 달" onclick="changeMonth(-1)">‹</button><button class="mnav-label" id="currentMonth" onclick="openMonthPicker()"></button><button class="mnav-btn" aria-label="다음 달" onclick="changeMonth(1)">›</button></div><button class="today-button" onclick="quickPick(new Date().getFullYear(),new Date().getMonth()+1)">이번 달</button><button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="테마 전환" onclick="toggleTheme()" title="라이트/다크모드 전환"><span id="theme-icon">🌙</span><span class="theme-text" id="theme-text">다크</span></button><span id="sync-dot" class="sync-dot" role="status" aria-live="polite"></span></div>
 </header>
 <!-- ── 콘텐츠 ── -->
 <div class="content">

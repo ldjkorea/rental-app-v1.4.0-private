@@ -155,3 +155,72 @@ a {color:var(--gold);}
 @media print {body{background:#fff;padding:0!important;color:#111;}body.printing-bill .workspace-sidebar,body.printing-bill .header,body.printing-bill #data-notice,body.printing-bill #app-update-notice,body.printing-bill .section:not(#section-history),body.printing-bill #hist-nav,body.printing-bill #hist-chips,body.printing-bill .section-label,body.printing-bill .bill-actions,body.printing-bill .invoice-check,body.printing-bill .audit-details,body.printing-bill .modal-overlay,body.printing-bill .toast{display:none!important;}body.printing-bill .content{padding:0;max-width:none;}body.printing-bill #section-history{display:block!important;}body.printing-bill .bill-document{box-shadow:none;border:0;}body.printing-bill .payment-card button{display:none;}body.printing-bill .charge-row,body.printing-bill .payment-card{break-inside:avoid;}@page{size:A4;margin:15mm;}}
 
 .data-warning{padding:12px;border:1px solid var(--gold);border-radius:8px;color:var(--gold2);line-height:1.7;font-size:12px;overflow-wrap:anywhere}.charge-row>span{overflow-wrap:anywhere;min-width:0}.status-bar{overflow-wrap:anywhere;flex-wrap:wrap}.draft-state .btn{margin-top:8px;font-size:11px}.payment-date{overflow-wrap:anywhere}
+
+/* ───────────────────────────────────────
+   테마 토글 버튼 (토스/핀테크 스타일)
+─────────────────────────────────────── */
+.theme-toggle-btn{padding:7px 11px;background:#fff;border:1px solid var(--border2);border-radius:10px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--text2);min-height:36px;font-family:inherit;font-weight:500;transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+.theme-toggle-btn:hover{background:var(--surface2);border-color:var(--gold);transform:scale(1.02);}
+@media(max-width:800px){.theme-toggle-btn .theme-text{display:none;}.theme-toggle-btn{padding:7px 9px;min-width:36px;justify-content:center;font-size:14px;}}
+
+/* ───────────────────────────────────────
+   토스 스타일 핀테크 다크 모드 (Toss Dark)
+─────────────────────────────────────── */
+[data-theme="dark"]{
+  --bg:#111317;--surface:#191c23;--surface2:#222630;--surface3:#2c3240;
+  --border:#262b36;--border2:#323847;--text:#f2f4f6;--text2:#9da7b6;--text3:#6c7686;
+  --gold:#38b47a;--gold2:#52cf94;--gold3:#204d37;--goldbg:rgba(56,180,122,.12);--goldbg2:rgba(56,180,122,.22);
+  --green:#38b47a;--red:#f04452;--redbg:rgba(240,68,82,.12);
+}
+[data-theme="dark"] body{background:var(--bg);color:var(--text);}
+[data-theme="dark"] .card,[data-theme="dark"] .t-item,[data-theme="dark"] .metric-card,[data-theme="dark"] .building-card,
+[data-theme="dark"] .building-attention,[data-theme="dark"] .building-empty,[data-theme="dark"] .step-row,
+[data-theme="dark"] .modal,[data-theme="dark"] .chip,[data-theme="dark"] .month-nav,[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .building-filters button,[data-theme="dark"] .theme-toggle-btn,[data-theme="dark"] .today-button{
+  background:var(--surface);border-color:var(--border);color:var(--text);
+}
+[data-theme="dark"] .theme-toggle-btn:hover{background:var(--surface2);border-color:var(--gold);}
+[data-theme="dark"] .t-item{border-bottom-color:var(--border);}
+[data-theme="dark"] .t-item:hover,[data-theme="dark"] .building-card.is-clickable:hover{background:var(--surface2);}
+[data-theme="dark"] .t-avatar{background:var(--surface2);color:var(--gold2);}
+[data-theme="dark"] .field input,[data-theme="dark"] .field select,[data-theme="dark"] .section-toolbar input{
+  background:var(--surface2);border-color:var(--border2);color:var(--text);
+}
+[data-theme="dark"] .field input:focus,[data-theme="dark"] .field select:focus{background:var(--surface3);border-color:var(--gold);}
+[data-theme="dark"] .dashboard-intro{background:#152119;border-color:#203728;color:var(--text);}
+[data-theme="dark"] .dashboard-intro h2,[data-theme="dark"] .dashboard-intro p,[data-theme="dark"] .dashboard-intro .eyebrow{color:#d8e6db;}
+[data-theme="dark"] .metric-card.green{background:rgba(56,180,122,.08);border-color:rgba(56,180,122,.25);}
+[data-theme="dark"] .metric-card.green>strong{color:#52cf94;}
+[data-theme="dark"] .metric-card.amber{background:rgba(230,180,50,.08);border-color:rgba(230,180,50,.25);}
+[data-theme="dark"] .metric-card.amber>strong{color:#ffd166;}
+[data-theme="dark"] .metric-card.red{background:rgba(240,68,82,.08);border-color:rgba(240,68,82,.25);}
+[data-theme="dark"] .metric-card.red>strong{color:#ff6b77;}
+[data-theme="dark"] .building-filters button.active,[data-theme="dark"] .chip.active{background:#276749;border-color:#38a169;color:#fff;}
+[data-theme="dark"] .step-dot{background:var(--surface2);}
+[data-theme="dark"] .step-line{background:var(--border2);}
+[data-theme="dark"] .modal-overlay{background:rgba(0,0,0,.7);backdrop-filter:blur(6px);}
+[data-theme="dark"] .modal-close{background:var(--surface2);color:var(--text2);}
+[data-theme="dark"] .result-tbl th{background:var(--surface2);color:var(--text2);border-bottom-color:var(--border2);}
+[data-theme="dark"] .result-tbl td{border-bottom-color:var(--border);color:var(--text);}
+[data-theme="dark"] .result-tbl tr:hover td{background:rgba(255,255,255,.03);}
+[data-theme="dark"] .result-tbl .sum-row td{background:var(--surface2);border-top-color:var(--border2);}
+[data-theme="dark"] .allocation-input{background:var(--surface2);border-color:var(--border2);color:var(--text);}
+[data-theme="dark"] .reconcile.balanced{background:rgba(56,180,122,.12);color:#52cf94;}
+[data-theme="dark"] .reconcile.unbalanced{background:rgba(240,68,82,.12);color:#ff6b77;}
+[data-theme="dark"] .bill-balance{background:var(--surface2);color:var(--text2);}
+[data-theme="dark"] .bill-balance strong{color:var(--gold2);}
+[data-theme="dark"] .payment-card{background:var(--surface);border-color:var(--border);}
+[data-theme="dark"] .payment-card.is-paid{background:rgba(56,180,122,.06);border-color:rgba(56,180,122,.25);}
+[data-theme="dark"] .status-tag{background:var(--surface2);color:var(--text2);}
+[data-theme="dark"] .is-paid .status-tag{background:rgba(56,180,122,.2);color:#52cf94;}
+[data-theme="dark"] .charge-row{border-bottom-color:var(--border);}
+[data-theme="dark"] .tag-ok{background:rgba(56,180,122,.15);color:#52cf94;}
+[data-theme="dark"] .tag-pending{background:rgba(230,180,50,.15);color:#ffd166;}
+[data-theme="dark"] .tag-new{background:var(--surface2);color:var(--text3);}
+[data-theme="dark"] .toast{background:#1e2430;color:#f2f4f6;border-color:#353f52;}
+[data-theme="dark"] .kakao-box{background:var(--surface2);border-color:var(--border2);color:var(--text);}
+[data-theme="dark"] .workspace-sidebar{background:#0e1116;border-right:1px solid var(--border);}
+@media(max-width:800px){[data-theme="dark"] .workspace-sidebar{background:#13161c;border-top-color:var(--border);}}
+[data-theme="dark"] .pill-item.active{background:#1d3025;color:#52cf94;}
+[data-theme="dark"] .hint-box,[data-theme="dark"] .draft-state{background:var(--surface2);border-color:var(--border2);color:var(--text2);}
+
