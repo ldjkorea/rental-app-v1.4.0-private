@@ -885,16 +885,16 @@ function sharedUtilityDay(field,label){
   if(days.length!==1)return {error:`층별 ${label} 기준일이 다릅니다 (${days.map(day=>day+'일').join(' · ')}).`};
   return {day:days[0]};
 }
-function utilityPeriodForSettlement(monthKey,day,span,startAfterRead=false){
+function utilityPeriodForSettlement(monthKey,day,span,startAfterRead=false,lag=0){
   const match=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));
   if(!match||!Number.isInteger(Number(day))||Number(day)<1||Number(day)>31)return null;
   const year=Number(match[1]),month=Number(match[2]);
-  const endMonth=new Date(year,month-2,1); // A utility bill is normally settled the month after its final read.
+  const endMonth=new Date(year,month-1-lag,1); // lag=0: 당월 마감(예: 9월 정산 시 9월 마감), lag=1: 전월 마감(예: 9월 정산 시 8월 마감)
   const startMonth=new Date(endMonth.getFullYear(),endMonth.getMonth()-span,1);
   const clamp=(date,dayValue)=>new Date(date.getFullYear(),date.getMonth(),Math.min(dayValue,new Date(date.getFullYear(),date.getMonth()+1,0).getDate()));
   const start=clamp(startMonth,day),end=clamp(endMonth,day);
-  if(startAfterRead)start.setDate(start.getDate()+1); // water use starts the day after the previous meter read.
-  else end.setDate(end.getDate()-1); // electricity use ends the day before the next cycle start.
+  if(startAfterRead)start.setDate(start.getDate()+1); // 수도: 이전 검침일 다음날부터 사용 시작
+  else end.setDate(end.getDate()-1); // 전기: 다음 주기 시작일 전날 마감
   const iso=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   return {start:iso(start),end:iso(end),day,span};
 }
@@ -904,9 +904,9 @@ function settlementUsagePeriods(monthKey,waterActive,saved){
   const waterDay=sharedUtilityDay('period_water_day','수도 계량일');
   return {
     electricity:isStored(saved?.electricity)?{...saved.electricity,source:'saved'}:
-      electricDay.error?{error:electricDay.error}:{...utilityPeriodForSettlement(monthKey,electricDay.day,1),source:'calculated'},
+      electricDay.error?{error:electricDay.error}:{...utilityPeriodForSettlement(monthKey,electricDay.day,1,false,0),source:'calculated'},
     water:!waterActive?{inactive:true}:isStored(saved?.water)?{...saved.water,source:'saved'}:
-      waterDay.error?{error:waterDay.error}:{...utilityPeriodForSettlement(monthKey,waterDay.day,2,true),source:'calculated'}
+      waterDay.error?{error:waterDay.error}:{...utilityPeriodForSettlement(monthKey,waterDay.day,2,true,1),source:'calculated'}
   };
 }
 function displayUsagePeriod(period,label,legacy){
@@ -1834,13 +1834,13 @@ async function saveWaterMeter() {
 }
 function calcPeriod(day,year,month){return RentalBilling.period(day,year,month);}
 function calcElectricityPeriod(day,year,month){
-  const value=utilityPeriodForSettlement(`${year}-${String(month).padStart(2,'0')}`,Number(day),1,false);
+  const value=utilityPeriodForSettlement(`${year}-${String(month).padStart(2,'0')}`,Number(day),1,false,0);
   return value?`${value.start.slice(5).replace('-','/')}~${value.end.slice(5).replace('-','/')}`:'';
 }
 function calcWaterPeriod(t,year,month) {
   if(!t.period_water_day||!t.period_water_odd)return {period:'',active:true};
   const active=month%2===(t.period_water_odd==='odd'?1:0);
-  const value=active?utilityPeriodForSettlement(`${year}-${String(month).padStart(2,'0')}`,Number(t.period_water_day),2,true):null;
+  const value=active?utilityPeriodForSettlement(`${year}-${String(month).padStart(2,'0')}`,Number(t.period_water_day),2,true,1):null;
   return {period:value?`${value.start.slice(5).replace('-','/')}~${value.end.slice(5).replace('-','/')}`:'',active};
 }
 async function toggleFieldNA(field) {
