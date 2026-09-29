@@ -114,6 +114,15 @@
           for (const field of ['elec', 'waterTotal', 'waterUsage', 'waterF1', 'elev', 'waste']) {
             if (value[field] != null) number(value[field], `정산.${field}`, !['waterUsage','waterF1'].includes(field));
           }
+          if (value.waterFloors != null) {
+            record(value.waterFloors, '정산 수도 층별 데이터');
+            Object.entries(value.waterFloors).forEach(([floor, fData]) => {
+              record(fData, `정산 수도 ${floor}층`);
+              for (const fField of ['prevMeter', 'curMeter', 'usage']) {
+                if (fData[fField] != null && fData[fField] !== '') number(fData[fField], `정산 수도 ${floor}층 ${fField}`);
+              }
+            });
+          }
         }
       });
     }

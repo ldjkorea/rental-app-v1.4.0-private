@@ -1398,6 +1398,15 @@ a {color:var(--gold);}
           for (const field of ['elec', 'waterTotal', 'waterUsage', 'waterF1', 'elev', 'waste']) {
             if (value[field] != null) number(value[field], `정산.${field}`, !['waterUsage','waterF1'].includes(field));
           }
+          if (value.waterFloors != null) {
+            record(value.waterFloors, '정산 수도 층별 데이터');
+            Object.entries(value.waterFloors).forEach(([floor, fData]) => {
+              record(fData, `정산 수도 ${floor}층`);
+              for (const fField of ['prevMeter', 'curMeter', 'usage']) {
+                if (fData[fField] != null && fData[fField] !== '') number(fData[fField], `정산 수도 ${floor}층 ${fField}`);
+              }
+            });
+          }
         }
       });
     }
@@ -1535,14 +1544,31 @@ a {color:var(--gold);}
       rows.forEach(r => r.elec = r.floor === 2 || r.floor === 3 ? 35000 : r.floor === 4 ? elec-70000 : 0);
     }
     if (water) {
-      const usage = Number(inputs.waterUsage), first = Number(inputs.waterF1);
+      const usage = Number(inputs.waterUsage);
+      const f1Usage = (inputs.waterFloors?.[1]?.usage !== undefined && inputs.waterFloors[1].usage !== '')
+        ? Number(inputs.waterFloors[1].usage)
+        : Number(inputs.waterF1);
       if (![1,2,3,4].every(f => floors.has(f))) throw new Error('수도 배분에는 1~4층 세입자가 필요합니다.');
-      if (!Number.isFinite(usage) || usage <= 0 || !Number.isFinite(first) || first < 0 || first > usage)
+      if (!Number.isFinite(usage) || usage <= 0 || !Number.isFinite(f1Usage) || f1Usage < 0 || f1Usage > usage)
         throw new Error('건물 총 사용량과 1층 사용량을 확인해주세요.');
-      const firstAmount = Math.round(water * first / usage);
-      const amounts = distribute(water-firstAmount, [ratio.r2,ratio.r3,ratio.r4].map(Number));
+      const firstAmount = Math.round(water * f1Usage / usage);
       floors.get(1).water = firstAmount;
-      [2,3,4].forEach((f,i) => floors.get(f).water = amounts[i]);
+
+      const remWater = water - firstAmount;
+      const upperFloors = [2, 3, 4, 5].filter(f => floors.has(f));
+      const upperUsages = upperFloors.map(f => {
+        const u = inputs.waterFloors?.[f]?.usage;
+        return (u !== undefined && u !== '' && !isNaN(Number(u))) ? Number(u) : 0;
+      });
+      const sumUpperUsage = upperUsages.reduce((a, b) => a + b, 0);
+
+      if (inputs.waterFloors && sumUpperUsage > 0) {
+        const amounts = distribute(remWater, upperUsages);
+        upperFloors.forEach((f, i) => floors.get(f).water = amounts[i]);
+      } else {
+        const amounts = distribute(remWater, [ratio.r2, ratio.r3, ratio.r4].map(Number));
+        [2, 3, 4].forEach((f, i) => { if (floors.has(f)) floors.get(f).water = amounts[i]; });
+      }
     }
     const elevatorTotal = inputs.elevMode === 'net' ? withVat(elev) : elev;
     if (elev) {
@@ -2744,6 +2770,29 @@ function displayUsagePeriod(period,label,legacy){
   const sourceNote=period.source==='saved'?'확정 당시 기간 저장됨':legacy?'현재 설정 기준 역산 · 과거 정산 당시 기간 기록 없음':'현재 설정 기준 자동 계산 · 정산 확정 시 기간 기록';
   return `<div style="margin:8px 0 0;padding:8px 10px;border-radius:8px;background:var(--surface2);font-size:11px;line-height:1.5;"><strong>부과 대상 기간</strong><span style="display:block;font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;">${fmtDate(period.start)} – ${fmtDate(period.end)}</span><span style="color:var(--text2);">${sourceNote} · 기준일 ${period.day}일</span></div>`;
 }
+function getPreviousWaterMeter(floor, targetMonthKey) {
+  const pastMonths = Object.keys(settInputs || {})
+    .filter(mk => mk < targetMonthKey && settInputs[mk]?.waterFloors?.[floor]?.curMeter != null)
+    .sort()
+    .reverse();
+  if (pastMonths.length > 0) {
+    const val = settInputs[pastMonths[0]].waterFloors[floor].curMeter;
+    if (val !== '' && val !== null && val !== undefined) return Number(val);
+  }
+  const tenant = activeTenants().find(t => getFloor(t.unit) === floor);
+  if (tenant) {
+    const history = (tenant.waterHistory || [])
+      .filter(w => w.mk < targetMonthKey && w.val != null)
+      .sort((a, b) => b.mk.localeCompare(a.mk));
+    if (history.length > 0) return Number(history[0].val);
+    const billMonths = Object.keys(bills || {})
+      .filter(mk => mk < targetMonthKey && bills[mk]?.[tenant.id]?.waterMeter != null)
+      .sort()
+      .reverse();
+    if (billMonths.length > 0) return Number(bills[billMonths[0]][tenant.id].waterMeter);
+  }
+  return '';
+}
 function renderSettTab(){
   settlementReview=null;settCalcResult=null;
   const key=mk();const si=settInputs[key]||{};
@@ -2761,6 +2810,61 @@ function renderSettTab(){
   const defaultElevSupply=defaultElevCount*50000;
   const elevVal=(si.elev!==undefined&&si.elev!=='')?si.elev:String(defaultElevSupply);
   const elevModeVal=si.elevMode||'net';
+
+  // 층별 세입자 매핑 및 층별 계량기 데이터 준비
+  const floorTenants = {};
+  activeTenants().forEach(t => {
+    const f = getFloor(t.unit);
+    if (f >= 1 && f <= 5) floorTenants[f] = t;
+  });
+
+  const t1 = floorTenants[1];
+  const f1Name = t1 ? (t1.biz || t1.name) : '1층 세입자';
+  const f1Unit = t1 ? t1.unit : '101호';
+  const f1Prev = (si.waterFloors?.[1]?.prevMeter !== undefined && si.waterFloors[1].prevMeter !== '')
+    ? si.waterFloors[1].prevMeter
+    : getPreviousWaterMeter(1, key);
+  const f1Cur = si.waterFloors?.[1]?.curMeter ?? '';
+  const f1Usage = si.waterFloors?.[1]?.usage ?? si.waterF1 ?? '';
+
+  const upperFloorNums = [2, 3, 4];
+  if (floorTenants[5] || (floorOperations && floorOperations[5])) upperFloorNums.push(5);
+
+  const upperFloorsHtml = upperFloorNums.map(f => {
+    const t = floorTenants[f];
+    const name = t ? (t.biz || t.name) : (f === 5 ? '5층 (공실/관리)' : `${f}층 세입자`);
+    const unit = t ? t.unit : `${f}01호`;
+    const prev = (si.waterFloors?.[f]?.prevMeter !== undefined && si.waterFloors[f].prevMeter !== '')
+      ? si.waterFloors[f].prevMeter
+      : getPreviousWaterMeter(f, key);
+    const cur = si.waterFloors?.[f]?.curMeter ?? '';
+    const usage = si.waterFloors?.[f]?.usage ?? '';
+    return `
+      <div style="background:var(--surface);border-radius:10px;padding:10px 12px;border:1px solid var(--border);margin-top:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div>
+            <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:rgba(201,168,76,.15);color:var(--gold);font-size:10px;font-weight:700;">${f}F</span>
+            <strong style="font-size:12px;margin-left:5px;color:var(--text);">${esc(name)} · ${esc(unit)}</strong>
+            <span style="font-size:10px;color:var(--text3);margin-left:4px;">(임시계량: 주방수도)</span>
+          </div>
+          <div id="sett-water-preview-${f}" style="font-size:11px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;">₩0 (0톤 · 0%)</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+          <div>
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">직전 검침 (자동)</label>
+            <input type="number" step="any" id="sett-water-prev-${f}" value="${esc(prev)}" oninput="calcWaterFloorUsage(${f})" placeholder="직전" style="font-size:11px;padding:6px 8px;">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">이번 검침 (입력)</label>
+            <input type="number" step="any" id="sett-water-cur-${f}" value="${esc(cur)}" oninput="calcWaterFloorUsage(${f})" placeholder="이번" style="font-size:11px;padding:6px 8px;">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">사용량(톤, 수정가능)</label>
+            <input type="number" step="any" id="sett-water-usage-${f}" value="${esc(usage)}" oninput="updateWaterCalculations()" placeholder="자동/직접" style="font-size:11px;padding:6px 8px;font-weight:700;color:var(--text);">
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 
   // 설정 탭 내 embed 영역에 정산 HTML 삽입
   const embed=document.getElementById('settings-sett-embed');
@@ -2802,15 +2906,66 @@ function renderSettTab(){
             <div class="card-title">💧 수도요금 <span style="font-size:10px;color:var(--gold);background:var(--goldbg);padding:2px 7px;border-radius:50px;">격월 · ${waterRecText}</span></div>${displayUsagePeriod(usagePeriods.water,'수도요금',done&&!hasSavedPeriods)}
           </div>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);">
-            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields();updateSettLiveTotal();" style="accent-color:var(--gold);" ${waterActive?'checked':''}>이번 달 청구
+            <input type="checkbox" id="sett-water-chk" onchange="toggleWaterFields();updateWaterCalculations();" style="accent-color:var(--gold);" ${waterActive?'checked':''}>이번 달 청구
           </label>
         </div>
         <div id="sett-water-fields" style="display:${waterActive?'block':'none'};">
           <div class="field-row">
-            <div class="field"><label>총 청구금액 (원)</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateSettLiveTotal()"></div>
-            <div class="field"><label>건물 총 사용량(톤)</label><input type="number" id="sett-water-usage" placeholder="예: 177" value="${esc(si.waterUsage||'')}"></div>
+            <div class="field"><label>총 청구금액 (원)</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateWaterCalculations()"></div>
+            <div class="field"><label>건물 총 사용량(톤)</label><input type="number" step="any" id="sett-water-usage" placeholder="예: 100" value="${esc(si.waterUsage||'')}" oninput="updateWaterCalculations()"></div>
           </div>
-          <div class="field"><label>1층 사용량(톤)</label><input type="number" id="sett-water-f1" placeholder="예: 41" value="${esc(si.waterF1||'')}"></div>
+          <input type="hidden" id="sett-water-f1" value="${esc(f1Usage)}">
+
+          <!-- 1층 전용 계량기 카드 -->
+          <div style="background:var(--surface);border-radius:10px;padding:12px;margin-top:10px;border:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div>
+                <span style="display:inline-block;padding:2px 7px;border-radius:5px;background:var(--goldbg);color:var(--gold);font-size:10px;font-weight:700;">1F</span>
+                <strong style="font-size:13px;margin-left:5px;color:var(--text);">${esc(f1Name)} · ${esc(f1Unit)}</strong>
+                <span style="font-size:11px;color:var(--text2);margin-left:4px;">(1층 전용 계량기)</span>
+              </div>
+              <div id="sett-water-preview-1" style="font-size:12px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;">₩0 (0톤 · 0%)</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div>
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">직전 검침 (자동)</label>
+                <input type="number" step="any" id="sett-water-prev-1" value="${esc(f1Prev)}" oninput="calcWaterFloorUsage(1)" placeholder="직전 수치" style="font-size:12px;padding:8px;">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">이번 검침 (입력)</label>
+                <input type="number" step="any" id="sett-water-cur-1" value="${esc(f1Cur)}" oninput="calcWaterFloorUsage(1)" placeholder="이번 수치" style="font-size:12px;padding:8px;">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">1층 사용량(톤)</label>
+                <input type="number" step="any" id="sett-water-usage-1" value="${esc(f1Usage)}" oninput="updateWaterCalculations()" placeholder="자동/직접" style="font-size:12px;padding:8px;font-weight:700;color:var(--gold);">
+              </div>
+            </div>
+          </div>
+
+          <!-- 잔여 현황 안내 배너 -->
+          <div id="sett-water-res-banner" style="margin:10px 0;padding:10px 12px;border-radius:8px;background:var(--surface2);border:1px dashed var(--border2);font-size:12px;line-height:1.5;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="color:var(--text2);">총 사용량 중 1층 차감 후 잔여량:</span>
+              <strong id="sett-water-rem-ton" style="font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;">0톤</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
+              <span style="color:var(--text2);">2~5층 배분 대상 잔여 요금:</span>
+              <strong id="sett-water-rem-won" style="font-size:14px;color:var(--green);font-variant-numeric:tabular-nums;">₩0</strong>
+            </div>
+          </div>
+
+          <!-- 2~5층 임시계량 (주방수도) 섹션 -->
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <div>
+                <strong style="font-size:13px;color:var(--text);">🍳 2~5층 임시계량 (주방수도사용량)</strong>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px;">주방 계량기 사용량 비율대로 잔여 금액 자동 분할 · 사용량 직접 수정 가능</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              ${upperFloorsHtml}
+            </div>
+          </div>
         </div>
         <div id="sett-water-off" style="display:${waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">
           <div>이번 달 수도요금 청구 없음 (${waterRecText})</div>
@@ -2848,11 +3003,12 @@ function renderSettTab(){
     </div>`;
   }
   updateSettLiveTotal();
+  updateWaterCalculations();
   goSettStep(1);
 }
 function enableWaterFieldsManually(){
   const chk=document.getElementById('sett-water-chk');
-  if(chk){ chk.checked=true; toggleWaterFields(); updateSettLiveTotal(); }
+  if(chk){ chk.checked=true; toggleWaterFields(); updateWaterCalculations(); }
 }
 function updateSettLiveTotal(){
   const elec=Number(document.getElementById('sett-elec')?.value||0);
@@ -2876,6 +3032,65 @@ function updateSettLiveTotal(){
     }
   }
 }
+function calcWaterFloorUsage(floor){
+  const prevEl=document.getElementById(`sett-water-prev-${floor}`);
+  const curEl=document.getElementById(`sett-water-cur-${floor}`);
+  const usageEl=document.getElementById(`sett-water-usage-${floor}`);
+  if(curEl && curEl.value!==''){
+    const prev=(prevEl && prevEl.value!=='')?Number(prevEl.value):0;
+    const cur=Number(curEl.value);
+    const diff=Math.max(0,Math.round((cur-prev)*100)/100);
+    if(usageEl)usageEl.value=diff;
+  }
+  updateWaterCalculations();
+}
+function updateWaterCalculations(){
+  updateSettLiveTotal();
+  const waterActive=document.getElementById('sett-water-chk')?.checked;
+  if(!waterActive)return;
+
+  const totalWon=Number(document.getElementById('sett-water-total')?.value||0);
+  const totalUsage=Number(document.getElementById('sett-water-usage')?.value||0);
+
+  // 1층 사용량 및 예상 요금
+  const f1Usage=Number(document.getElementById('sett-water-usage-1')?.value||0);
+  const f1Won=(totalUsage>0 && totalWon>0)?Math.round(totalWon*Math.min(f1Usage,totalUsage)/totalUsage):0;
+  const f1Pct=totalUsage>0?(Math.min(f1Usage,totalUsage)/totalUsage*100).toFixed(1):'0.0';
+
+  const p1=document.getElementById('sett-water-preview-1');
+  if(p1)p1.textContent=`₩${f1Won.toLocaleString('ko-KR')} (${f1Usage}톤 · ${f1Pct}%)`;
+
+  const hF1=document.getElementById('sett-water-f1');
+  if(hF1)hF1.value=f1Usage;
+
+  // 잔여 톤수 및 요금
+  const remUsage=Math.max(0,Math.round((totalUsage-f1Usage)*100)/100);
+  const remWon=Math.max(0,totalWon-f1Won);
+
+  const remTonEl=document.getElementById('sett-water-rem-ton');
+  if(remTonEl)remTonEl.textContent=`${remUsage.toLocaleString('ko-KR')}톤`;
+  const remWonEl=document.getElementById('sett-water-rem-won');
+  if(remWonEl)remWonEl.textContent=`₩${remWon.toLocaleString('ko-KR')}`;
+
+  // 2~5층 사용량 합계 및 분할
+  const floors=[2,3,4,5].filter(f=>document.getElementById(`sett-water-usage-${f}`));
+  const floorUsages=floors.map(f=>Number(document.getElementById(`sett-water-usage-${f}`)?.value||0));
+  const sumUpperUsage=floorUsages.reduce((a,b)=>a+b,0);
+
+  floors.forEach((f,i)=>{
+    const u=floorUsages[i];
+    const prevEl=document.getElementById(`sett-water-preview-${f}`);
+    if(prevEl){
+      if(sumUpperUsage>0 && remWon>0 && u>0){
+        const pct=(u/sumUpperUsage*100).toFixed(1);
+        const estWon=Math.round(remWon*u/sumUpperUsage);
+        prevEl.textContent=`₩${estWon.toLocaleString('ko-KR')} (${u}톤 · ${pct}%)`;
+      } else {
+        prevEl.textContent=`₩0 (${u}톤 · 0.0%)`;
+      }
+    }
+  });
+}
 function toggleWaterFields(){
   const on=document.getElementById('sett-water-chk')?.checked;
   const f=document.getElementById('sett-water-fields');
@@ -2888,14 +3103,49 @@ function calcSettlement() {
   if (!validateNumbers('settings-sett-embed')) return;
   const value = id => Number(document.getElementById(id)?.value || 0);
   const waterActive = document.getElementById('sett-water-chk').checked;
-  const inputs = {elec:value('sett-elec'), waterTotal:waterActive?value('sett-water-total'):0,
-    waterUsage:value('sett-water-usage'), waterF1:value('sett-water-f1'), waterActive,
-    elev:value('sett-elev'), elevMode:document.getElementById('sett-elev-mode').value, waste:value('sett-waste')};
+
+  const waterFloors = {};
+  [1, 2, 3, 4, 5].forEach(f => {
+    const prevEl = document.getElementById(`sett-water-prev-${f}`);
+    const curEl = document.getElementById(`sett-water-cur-${f}`);
+    const usageEl = document.getElementById(`sett-water-usage-${f}`);
+    if (usageEl || curEl) {
+      waterFloors[f] = {
+        prevMeter: prevEl?.value ?? '',
+        curMeter: curEl?.value ?? '',
+        usage: usageEl?.value ?? ''
+      };
+    }
+  });
+
+  const f1Usage = (waterFloors[1]?.usage !== undefined && waterFloors[1].usage !== '')
+    ? Number(waterFloors[1].usage)
+    : value('sett-water-f1');
+
+  const inputs = {
+    elec: value('sett-elec'),
+    waterTotal: waterActive ? value('sett-water-total') : 0,
+    waterUsage: value('sett-water-usage'),
+    waterF1: f1Usage,
+    waterFloors,
+    waterActive,
+    elev: value('sett-elev'),
+    elevMode: document.getElementById('sett-elev-mode').value,
+    waste: value('sett-waste')
+  };
+
   try {
     const result = RentalBilling.calculate(activeTenants(), inputs, waterRatio);
-    settlementReview = {...result, month:mk(), inputs, usagePeriods:settlementUsagePeriods(mk(),waterActive), tenantSignature:JSON.stringify(activeTenants().map(t=>[t.id,t.unit]))};
-    settCalcResult = Object.fromEntries(result.rows.map(r=>[r.id,r]));
-    renderSettlementReview(); goSettStep(2);
+    settlementReview = {
+      ...result,
+      month: mk(),
+      inputs,
+      usagePeriods: settlementUsagePeriods(mk(), waterActive),
+      tenantSignature: JSON.stringify(activeTenants().map(t => [t.id, t.unit]))
+    };
+    settCalcResult = Object.fromEntries(result.rows.map(r => [r.id, r]));
+    renderSettlementReview();
+    goSettStep(2);
   } catch(error) { showToast(error.message); }
 }
 function renderSettlementReview() {
@@ -2932,12 +3182,13 @@ function renderSettlementReview() {
       }
     }
 
-    // 수도 셀
+    // 수도 셀: 관리자가 직접 수정할 수 있도록 인풋 필드 제공!
     let waterCell = '<td class="na-cell" style="text-align:right;">—</td>';
-    if (row.water !== null && row.water > 0) {
+    if (row.water !== null && row.water >= 0) {
+      const isF1 = (row.floor === 1);
       waterCell = `<td style="text-align:right;vertical-align:middle;">` +
-        `<div style="font-weight:600;">${fmtN(row.water)}</div>` +
-        `<div style="font-size:9px;color:var(--text3);margin-top:1px;">${row.floor===1?'1층 실사용':'지분 배분'}</div></td>`;
+        `<input aria-label="${esc(row.unit)} 수도 배분액" class="allocation-input" type="number" min="0" step="1" value="${row.water}" onchange="adjustAllocation(${index},'water',this.value)">` +
+        `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${isF1?'1층 실사용':'주방비례 (수정가능)'}</div></td>`;
     }
 
     // 엘리베이터 셀: 기본 50,000원+VAT 5,000원 = 55,000원
@@ -2967,11 +3218,11 @@ function renderSettlementReview() {
   document.getElementById('sett-note').innerHTML = `<div class="reconcile ${balanced?'balanced':'unbalanced'}" style="display:flex;align-items:center;gap:6px;font-weight:600;">` +
     `${balanced?'✓ 입력 실비와 배분 합계가 완벽히 일치합니다 (100% 정합성 검증)':'합계 차이가 있습니다. 배분액을 조정해주세요.'}</div>` +
     `<div class="reconcile-details">${Object.keys(totals).map((key,i)=>`${['전기','수도','엘리베이터','오물비'][i]}: ${fmt(totals[key])} / ${fmt(result.expected[key])}`).join(' · ')}</div>` +
-    '<p class="card-sub">엘리베이터(2·3·4·5층 각 50,000원+VAT 5,000원) 및 오물비는 원 단위 잔액까지 오차 없이 배분되며 위 금액을 직접 조정할 수 있습니다.</p>';
+    '<p class="card-sub">수도(2~5층 주방비례)·엘리베이터·오물비는 원 단위 잔액까지 오차 없이 배분되며 위 금액을 직접 조정할 수 있습니다.</p>';
   document.getElementById('confirm-settlement').disabled = !balanced;
 }
 function adjustAllocation(index, key, value) {
-  if (!settlementReview || !['elev','waste'].includes(key)) return;
+  if (!settlementReview || !['elev','waste','water'].includes(key)) return;
   try { if(value==='')throw new Error('배분액을 입력해주세요.'); settlementReview.rows[index][key]=RentalBilling.won(value); }
   catch(error) { showToast(error.message); }
   renderSettlementReview();
@@ -2990,7 +3241,17 @@ async function confirmSettlement() {
     const tenant=findTenant(row.id,key),before=structuredClone(bill);
     snapshotBill(tenant,bill,key);
     if(row.elec!==null){bill.electricity=row.elec;bill.electricityNA=false;if(bill.paid?.pay_elec)bill.paid.pay_elec.na=false;}
-    if(row.water!==null){bill.water=row.water;bill.waterNA=false;if(bill.paid?.pay_water)bill.paid.pay_water.na=false;}
+    if(row.water!==null){
+      bill.water=row.water;bill.waterNA=false;if(bill.paid?.pay_water)bill.paid.pay_water.na=false;
+      if (settlementReview.inputs.waterFloors && settlementReview.inputs.waterFloors[row.floor]) {
+        const wf = settlementReview.inputs.waterFloors[row.floor];
+        if (wf.curMeter !== '' && wf.curMeter != null) {
+          bill.waterMeter = Number(wf.curMeter);
+          bill.waterMeterDate = `${String(cM).padStart(2,'0')}/20`;
+          tenant.waterHistory = [...(tenant.waterHistory||[]).filter(w => w.mk !== key), {mk: key, date: bill.waterMeterDate, val: bill.waterMeter}].sort((a,b)=>a.mk.localeCompare(b.mk));
+        }
+      }
+    }
     else if(!settlementReview.inputs.waterActive){bill.waterNA=true;if(bill.paid?.pay_water)bill.paid.pay_water.na=true;}
     if(row.elev!==null)bill.elevatorTotal=row.elev;
     bill.waste=row.waste; bill.wasteNA=row.waste===0;

@@ -36,14 +36,31 @@
       rows.forEach(r => r.elec = r.floor === 2 || r.floor === 3 ? 35000 : r.floor === 4 ? elec-70000 : 0);
     }
     if (water) {
-      const usage = Number(inputs.waterUsage), first = Number(inputs.waterF1);
+      const usage = Number(inputs.waterUsage);
+      const f1Usage = (inputs.waterFloors?.[1]?.usage !== undefined && inputs.waterFloors[1].usage !== '')
+        ? Number(inputs.waterFloors[1].usage)
+        : Number(inputs.waterF1);
       if (![1,2,3,4].every(f => floors.has(f))) throw new Error('수도 배분에는 1~4층 세입자가 필요합니다.');
-      if (!Number.isFinite(usage) || usage <= 0 || !Number.isFinite(first) || first < 0 || first > usage)
+      if (!Number.isFinite(usage) || usage <= 0 || !Number.isFinite(f1Usage) || f1Usage < 0 || f1Usage > usage)
         throw new Error('건물 총 사용량과 1층 사용량을 확인해주세요.');
-      const firstAmount = Math.round(water * first / usage);
-      const amounts = distribute(water-firstAmount, [ratio.r2,ratio.r3,ratio.r4].map(Number));
+      const firstAmount = Math.round(water * f1Usage / usage);
       floors.get(1).water = firstAmount;
-      [2,3,4].forEach((f,i) => floors.get(f).water = amounts[i]);
+
+      const remWater = water - firstAmount;
+      const upperFloors = [2, 3, 4, 5].filter(f => floors.has(f));
+      const upperUsages = upperFloors.map(f => {
+        const u = inputs.waterFloors?.[f]?.usage;
+        return (u !== undefined && u !== '' && !isNaN(Number(u))) ? Number(u) : 0;
+      });
+      const sumUpperUsage = upperUsages.reduce((a, b) => a + b, 0);
+
+      if (inputs.waterFloors && sumUpperUsage > 0) {
+        const amounts = distribute(remWater, upperUsages);
+        upperFloors.forEach((f, i) => floors.get(f).water = amounts[i]);
+      } else {
+        const amounts = distribute(remWater, [ratio.r2, ratio.r3, ratio.r4].map(Number));
+        [2, 3, 4].forEach((f, i) => { if (floors.has(f)) floors.get(f).water = amounts[i]; });
+      }
     }
     const elevatorTotal = inputs.elevMode === 'net' ? withVat(elev) : elev;
     if (elev) {
