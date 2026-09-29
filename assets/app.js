@@ -359,11 +359,35 @@ for(const eventType of ['click','change'])document.addEventListener(eventType,ev
 async function cloudRequest(options = {}) {
   const controller=new AbortController();
   syncController=controller;
-  const timeout=setTimeout(()=>controller.abort(),options.method==='POST'?60000:15000);
+  const isPost = options.method === 'POST';
+  const timeoutMs = isPost ? 90000 : 45000;
+  const timeout=setTimeout(()=>controller.abort(), timeoutMs);
   try {
-    const response=await fetch(SHEET_URL,{...options,cache:'no-store',signal:controller.signal});
-    if(!response.ok)throw new Error('서버 응답 오류');
-    const result=await response.json();
+    const fetchUrl = isPost ? SHEET_URL : `${SHEET_URL}${SHEET_URL.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+    const fetchOptions = {
+      ...options,
+      redirect: 'follow',
+      signal: controller.signal
+    };
+    delete fetchOptions.cache;
+
+    let response;
+    try {
+      response = await fetch(fetchUrl, fetchOptions);
+    } catch (netErr) {
+      if (controller.signal.aborted) {
+        throw new Error(`구글 서버 응답 시간 초과(${Math.round(timeoutMs/1000)}초). 잠시 후 다시 시도해주세요.`);
+      }
+      throw new Error(`네트워크 연결 오류 (${netErr.message || '구글 서버 연결 실패'}). 인터넷 연결 상태를 확인해주세요.`);
+    }
+
+    if(!response.ok)throw new Error(`구글 서버 응답 오류 (HTTP ${response.status})`);
+    let result;
+    try {
+      result=await response.json();
+    } catch (parseErr) {
+      throw new Error('구글 서버 응답 형식 오류 (JSON 파싱 실패)');
+    }
     if(result.status==='conflict')throw new Error('다른 기기의 변경이 있습니다. 업로드하지 않았습니다.');
     if(result.status!=='ok')throw new Error(result.message||'서버 저장 확인 실패');
     return result;
@@ -450,7 +474,11 @@ async function doSync(options = {}) {
         if(JSON.stringify(remoteData)===JSON.stringify(localData)) {
           cloudBaseRevision=remote.revision;
         } else {
-          throw new Error('구글 기준 버전이 없습니다. 먼저 불러오거나 수동 저장에서 자료를 대조해주세요.');
+          showDataNotice('구글 서버와 기기 데이터의 버전이 다릅니다. 구글 최신 자료를 불러오거나 현재 기기 자료로 저장할 수 있습니다.', [
+            {text: '구글에서 불러오기', onClick: syncFromSheet},
+            {text: '핸드폰 내용으로 저장', onClick: () => doSync({manual: true, force: true})}
+          ]);
+          throw new Error('구글 서버와 기기 데이터의 기준 버전이 다릅니다.');
         }
       } else {
         if(!options.force && !confirm('구글 세입자 '+remoteData.tenants.length+'명 / 고지서 '+Object.keys(remoteData.bills).length+'개월을 현재 기기 자료로 교체할까요? 서버 자료를 이 기기에 별도 보관한 뒤 버전을 비교하여 저장합니다.'))return;
@@ -472,11 +500,11 @@ async function doSync(options = {}) {
           appStorage.setItem('rentalApp.cloudRecovery.v1', JSON.stringify(RentalCore.envelope(remoteData)));
           cloudBaseRevision=remote.revision;
         } else {
-          showDataNotice('구글 자료가 다른 기기에서 변경됐습니다. 로컬 백업을 내보낸 뒤 불러오기와 대조가 필요합니다.', [
+          showDataNotice('구글 자료가 다른 기기에서 변경됐습니다. 최신 내용을 확인해주세요.', [
             {text: '핸드폰 내용으로 저장', onClick: () => doSync({manual: true, force: true})},
             {text: '구글에서 불러오기', onClick: syncFromSheet}
           ]);
-          throw new Error('구글 자료가 다른 기기에서 변경됐습니다. 로컬 백업을 내보낸 뒤 불러오기와 대조가 필요합니다.');
+          throw new Error('구글 자료가 다른 기기에서 변경됐습니다. [구글에서 불러오기] 또는 [핸드폰 내용으로 저장]을 선택해주세요.');
         }
       }
     }
@@ -500,8 +528,12 @@ async function doSync(options = {}) {
     syncUI(!cloudEnabled?'local':cloudDirty?'pending':'saved');
   } catch(error) {
     syncUI(cloudEnabled?'error':'local');
-    if (!document.getElementById('data-notice')?.innerText.includes('다른 기기')) {
-      showDataNotice(error.message);
+    const existingNotice = document.getElementById('data-notice');
+    if (!existingNotice || (!existingNotice.innerText.includes('구글 서버와 기기') && !existingNotice.innerText.includes('다른 기기'))) {
+      showDataNotice(error.message, [
+        {text: '구글에서 불러오기', onClick: syncFromSheet},
+        {text: '다시 시도', onClick: () => doSync({manual: true})}
+      ]);
     }
   }
   finally {
@@ -532,10 +564,16 @@ async function syncFromSheet() {
     await writeLocal(data,false,base,()=>backupCurrentData('구글 불러오기 전'));
     assignData(data);cloudDirty=false;cloudBaseRevision=base;
     const draftsSaved=storeBillDrafts({});
-    refreshDataViews();syncUI('local');
+    refreshDataViews();
+    syncUI(cloudEnabled ? 'saved' : 'local');
     showDataNotice(!draftsSaved?'자료는 불러왔으나 초안 저장소를 갱신하지 못했습니다. 백업을 내보낸 뒤 저장 공간을 확인해주세요.':base?'':'불러오기 완료. 이 서버는 버전 비교 저장을 지원하지 않아 업로드는 차단됩니다.');
-    showToast('불러오기 완료 ✓');
-  } catch(error){syncUI('error');showDataNotice('불러오기 실패: '+error.message);}
+    showToast('구글 데이터 불러오기 완료 ✓');
+  } catch(error){
+    syncUI('error');
+    showDataNotice('구글 불러오기 실패: '+error.message, [
+      {text: '다시 시도', onClick: syncFromSheet}
+    ]);
+  }
   finally{clearTimeout(saveTimer);syncBusy=false;persistenceBusy=false;}
 }
 
@@ -2954,10 +2992,21 @@ async function checkBackgroundCloudSync() {
   try {
     const remote = await cloudRequest();
     if (!supportsSafeSync(remote)) return;
-    if (cloudBaseRevision && remote.revision !== cloudBaseRevision) {
-      const remoteData = RentalCore.validateData(remote.data);
-      const localData = RentalCore.validateData(currentData());
-      if (JSON.stringify(remoteData) === JSON.stringify(localData)) {
+    const remoteData = RentalCore.validateData(remote.data);
+    const localData = RentalCore.validateData(currentData());
+    const isIdentical = JSON.stringify(remoteData) === JSON.stringify(localData);
+
+    if (!cloudBaseRevision) {
+      if (isIdentical) {
+        cloudBaseRevision = remote.revision;
+        await withStorageLock(() => {
+          expectedStorageToken = RentalCore.persistChecked(appStorage, currentData(), expectedStorageToken,
+            {cloudPending: false, cloudBaseRevision});
+        });
+        syncUI('saved');
+      }
+    } else if (remote.revision !== cloudBaseRevision) {
+      if (isIdentical) {
         cloudBaseRevision = remote.revision;
         await withStorageLock(() => {
           expectedStorageToken = RentalCore.persistChecked(appStorage, currentData(), expectedStorageToken,
