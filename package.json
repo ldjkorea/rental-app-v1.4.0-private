@@ -1,6 +1,6 @@
 {
   "name": "rental-app",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "임대관리 앱 — 데이터 안정성 개선본",
   "scripts": {

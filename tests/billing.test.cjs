@@ -44,6 +44,11 @@ test('due dates clamp rent payday to month length and management to month end',(
  assert.equal(b.dueDate(tenant,'pay_mgmt',2024,2),'2024-02-29');
  assert.equal(b.dueDate({},'pay_rent',2026,9),'');
  assert.equal(b.dueDate({payday:'월말'},'pay_rent',2024,2),'2024-02-29');
+ assert.equal(b.dueDate({payday:'매월 말'},'pay_rent',2024,2),'2024-02-29');
+ assert.equal(b.dueDate({payday:'08'},'pay_rent',2026,4),'2026-04-08');
+ assert.equal(b.dueDate({payday:'08일'},'pay_rent',2026,4),'2026-04-08');
+ assert.equal(b.dueDate({payday:'매월 08일'},'pay_rent',2026,4),'2026-04-08');
+ assert.equal(b.dueDate({payday:'당월 25일'},'pay_rent',2026,4),'2026-04-25');
 });
 test('historical payment separates not-due, overdue, paid and exempt amounts',()=>{
  const tenant={id:'due1',name:'지급일 테스트',unit:'101호',payday:'매월 15일',rent:100000,mgmt:10000,elevator:0};

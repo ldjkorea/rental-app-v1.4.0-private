@@ -106,3 +106,58 @@ test('water meter reading auto deduction and upper floors kitchen usage proporti
   assert.equal(reconcileAdjusted.totals.water, 300000);
 });
 
+test('water meter inspection dates and previous meter lookup across billing cycles', () => {
+  const env = loadAppEnv();
+  vm.runInContext("tenants = [{ id: 't1', unit: '101호', period_water_day: 20, period_elec: 24, leaseStatus: 'active' }];", env);
+  // 9월 정산 시 수도 사용기간: 06/21 ~ 08/20 -> 직전 검침: 6/20, 이번 검침: 8/20
+  const pSep = env.settlementUsagePeriods('2026-09', true);
+  const sDate = new Date(pSep.water.start);
+  sDate.setDate(sDate.getDate() - 1);
+  const prevDate = `${sDate.getMonth() + 1}/${sDate.getDate()}`;
+  const eDate = new Date(pSep.water.end);
+  const curDate = `${eDate.getMonth() + 1}/${eDate.getDate()}`;
+  assert.equal(prevDate, '6/20');
+  assert.equal(curDate, '8/20');
+
+  // 7월 정산 시 수도 사용기간: 04/21 ~ 06/20 -> 직전 검침: 4/20, 이번 검침: 6/20
+  const pJul = env.settlementUsagePeriods('2026-07', true);
+  const sDateJul = new Date(pJul.water.start);
+  sDateJul.setDate(sDateJul.getDate() - 1);
+  const prevDateJul = `${sDateJul.getMonth() + 1}/${sDateJul.getDate()}`;
+  const eDateJul = new Date(pJul.water.end);
+  const curDateJul = `${eDateJul.getMonth() + 1}/${eDateJul.getDate()}`;
+  assert.equal(prevDateJul, '4/20');
+  assert.equal(curDateJul, '6/20');
+
+  // 중간에 수도를 안 한 8월 정산 데이터가 있어도 7월 검침값을 올바르게 찾아오는지 검증
+  vm.runInContext(`
+    settInputs['2026-07'] = {
+      waterFloors: {
+        1: { prevMeter: 1200, curMeter: 1250, usage: 50 },
+        2: { prevMeter: 300, curMeter: 325, usage: 25 }
+      },
+      usagePeriods: { water: { end: '2026-06-20' } }
+    };
+    settInputs['2026-08'] = {
+      waterFloors: {
+        1: { prevMeter: '', curMeter: '', usage: '' },
+        2: { prevMeter: '', curMeter: '', usage: '' }
+      }
+    };
+  `, env);
+
+  const prevF1 = env.getPreviousWaterMeter(1, '2026-09');
+  assert.equal(prevF1, 1250);
+  const prevInfoF1 = env.getPreviousWaterMeterInfo(1, '2026-09');
+  assert.equal(prevInfoF1.val, 1250);
+  assert.equal(prevInfoF1.sourceMonth, '2026-07');
+  assert.equal(prevInfoF1.date, '06/20');
+
+  const prevF2 = env.getPreviousWaterMeter(2, '2026-09');
+  assert.equal(prevF2, 325);
+  const prevInfoF2 = env.getPreviousWaterMeterInfo(2, '2026-09');
+  assert.equal(prevInfoF2.val, 325);
+  assert.equal(prevInfoF2.sourceMonth, '2026-07');
+});
+
+

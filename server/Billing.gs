@@ -228,8 +228,8 @@
   }
   function paydayOf(tenant) {
     const raw=String(tenant?.payday??'').trim();
-    if(/^(?:매월\s*|매달\s*)?(?:말일|월말)$/.test(raw))return 31;
-    const match=raw.match(/^(?:매월\s*|매달\s*)?([1-9]|[12]\d|3[01])\s*일?$/);
+    if(/^(?:매월\s*|매달\s*|당월\s*|익월\s*)?(?:말일|월말|말)$/.test(raw))return 31;
+    const match=raw.match(/^(?:매월\s*|매달\s*|당월\s*|익월\s*)?(0?[1-9]|[12]\d|3[01])\s*일?$/);
     const day=match?Number(match[1]):0;
     return Number.isInteger(day) && day >= 1 && day <= 31 ? day : 0;
   }

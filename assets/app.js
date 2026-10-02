@@ -659,6 +659,15 @@ function quickPick(y,m){
   if(isSett)renderSettTab();
   closeModal('modal-month');
 }
+function jumpToSettlementMonth(y,m){
+  if(typeof flushBillDraft==='function')flushBillDraft();
+  cY=y;cM=m;histY=y;histM=m;
+  updateMonthLabel();renderAll();
+  const isSett=document.getElementById('section-settlement')?.classList.contains('active');
+  if(isSett||!document.querySelector('.tab-content.active'))renderSettTab();
+  else if(typeof navTo==='function')navTo('settlement');
+  else renderSettTab();
+}
 function applyMonthPicker(){
   const y=Number(document.getElementById('pick-y').value);
   const m=Number(document.getElementById('pick-m').value);
@@ -956,7 +965,11 @@ function displayUsagePeriod(period,label,legacy){
 }
 function getPreviousWaterMeter(floor, targetMonthKey) {
   const pastMonths = Object.keys(settInputs || {})
-    .filter(mk => mk < targetMonthKey && settInputs[mk]?.waterFloors?.[floor]?.curMeter != null)
+    .filter(mk => {
+      if (mk >= targetMonthKey) return false;
+      const m = settInputs[mk]?.waterFloors?.[floor]?.curMeter;
+      return m !== '' && m !== null && m !== undefined;
+    })
     .sort()
     .reverse();
   if (pastMonths.length > 0) {
@@ -966,16 +979,55 @@ function getPreviousWaterMeter(floor, targetMonthKey) {
   const tenant = activeTenants().find(t => getFloor(t.unit) === floor);
   if (tenant) {
     const history = (tenant.waterHistory || [])
-      .filter(w => w.mk < targetMonthKey && w.val != null)
+      .filter(w => w.mk < targetMonthKey && w.val != null && w.val !== '')
       .sort((a, b) => b.mk.localeCompare(a.mk));
     if (history.length > 0) return Number(history[0].val);
     const billMonths = Object.keys(bills || {})
-      .filter(mk => mk < targetMonthKey && bills[mk]?.[tenant.id]?.waterMeter != null)
+      .filter(mk => mk < targetMonthKey && bills[mk]?.[tenant.id]?.waterMeter != null && bills[mk]?.[tenant.id]?.waterMeter !== '')
       .sort()
       .reverse();
     if (billMonths.length > 0) return Number(bills[billMonths[0]][tenant.id].waterMeter);
   }
   return '';
+}
+function getPreviousWaterMeterInfo(floor, targetMonthKey) {
+  const pastMonths = Object.keys(settInputs || {})
+    .filter(mk => {
+      if (mk >= targetMonthKey) return false;
+      const m = settInputs[mk]?.waterFloors?.[floor]?.curMeter;
+      return m !== '' && m !== null && m !== undefined;
+    })
+    .sort()
+    .reverse();
+  if (pastMonths.length > 0) {
+    const pastKey = pastMonths[0];
+    const val = Number(settInputs[pastKey].waterFloors[floor].curMeter);
+    let date = '';
+    if (settInputs[pastKey].usagePeriods?.water?.end) {
+      const parts = settInputs[pastKey].usagePeriods.water.end.split('-');
+      if (parts.length === 3) date = `${parts[1]}/${parts[2]}`;
+    }
+    return { val, date, sourceMonth: pastKey, sourceLabel: `${pastKey} 정산 기록` };
+  }
+  const tenant = activeTenants().find(t => getFloor(t.unit) === floor);
+  if (tenant) {
+    const history = (tenant.waterHistory || [])
+      .filter(w => w.mk < targetMonthKey && w.val != null && w.val !== '')
+      .sort((a, b) => b.mk.localeCompare(a.mk));
+    if (history.length > 0) {
+      return { val: Number(history[0].val), date: history[0].date || '', sourceMonth: history[0].mk, sourceLabel: `${history[0].mk} 검침 이력` };
+    }
+    const billMonths = Object.keys(bills || {})
+      .filter(mk => mk < targetMonthKey && bills[mk]?.[tenant.id]?.waterMeter != null && bills[mk]?.[tenant.id]?.waterMeter !== '')
+      .sort()
+      .reverse();
+    if (billMonths.length > 0) {
+      const pastKey = billMonths[0];
+      const b = bills[pastKey][tenant.id];
+      return { val: Number(b.waterMeter), date: b.waterMeterDate || '', sourceMonth: pastKey, sourceLabel: `${pastKey} 고지서 기록` };
+    }
+  }
+  return { val: '', date: '', sourceMonth: '', sourceLabel: '' };
 }
 function renderSettTab(){
   settlementReview=null;settCalcResult=null;
@@ -987,6 +1039,31 @@ function renderSettTab(){
   const waterRecText=isOddMonth?'홀수달(부과월 권장)':'짝수달(미부과월 권장)';
   const usagePeriods=settlementUsagePeriods(key,waterActive,si.usagePeriods);
   const hasSavedPeriods=Boolean(si.usagePeriods);
+
+  // 수도 검침일자 및 대상 기간 라벨 계산
+  let prevDateLabel = '직전';
+  let curDateLabel = '이번';
+  let waterPeriodSummary = '';
+  if (usagePeriods.water && !usagePeriods.water.inactive && !usagePeriods.water.error) {
+    const sDate = new Date(usagePeriods.water.start);
+    sDate.setDate(sDate.getDate() - 1);
+    prevDateLabel = `${sDate.getMonth() + 1}/${sDate.getDate()}`;
+    const eDate = new Date(usagePeriods.water.end);
+    curDateLabel = `${eDate.getMonth() + 1}/${eDate.getDate()}`;
+    waterPeriodSummary = `${prevDateLabel} ~ ${curDateLabel} (2개월 사용분)`;
+  } else {
+    const prevWaterMonth = (cM === 2) ? 12 : (cM % 2 === 0 ? cM - 2 : (cM === 1 ? 11 : cM - 2));
+    const curWaterMonth = (cM % 2 === 0) ? cM : (cM === 1 ? 12 : cM - 1);
+    prevDateLabel = `${prevWaterMonth}/20`;
+    curDateLabel = `${curWaterMonth}/20`;
+    waterPeriodSummary = `${prevDateLabel} ~ ${curDateLabel} (2개월 사용분)`;
+  }
+
+  // 짝수달(미부과월) 안내 정보 계산
+  const nextSettMonth = (cM === 12) ? 1 : cM + 1;
+  const nextSettYear = (cM === 12) ? cY + 1 : cY;
+  const evenCurWaterMonth = cM;
+  const evenPrevWaterMonth = (cM === 2) ? 12 : cM - 2;
 
   // 엘리베이터: 따로 수정하지 않으면 2,3,4,5층 모두 50,000원에 부가세 5,000원(총 55,000원) 자동
   const elevTenants=activeTenants().filter(t=>getFloor(t.unit)>=2);
@@ -1005,11 +1082,16 @@ function renderSettTab(){
   const t1 = floorTenants[1];
   const f1Name = t1 ? (t1.biz || t1.name) : '1층 세입자';
   const f1Unit = t1 ? t1.unit : '101호';
+  const f1PrevInfo = getPreviousWaterMeterInfo(1, key);
   const f1Prev = (si.waterFloors?.[1]?.prevMeter !== undefined && si.waterFloors[1].prevMeter !== '')
     ? si.waterFloors[1].prevMeter
-    : getPreviousWaterMeter(1, key);
+    : f1PrevInfo.val;
   const f1Cur = si.waterFloors?.[1]?.curMeter ?? '';
   const f1Usage = si.waterFloors?.[1]?.usage ?? si.waterF1 ?? '';
+  const f1PrevSourceText = (f1Prev !== '' && f1Prev !== null && f1Prev !== undefined)
+    ? (f1PrevInfo.sourceLabel ? `✓ ${f1PrevInfo.sourceLabel} 반영` : `✓ 이전 수치 자동 입력됨`)
+    : `⚠️ ${prevDateLabel} 사진 수치 입력 필요`;
+  const f1PrevColor = (f1Prev !== '' && f1Prev !== null && f1Prev !== undefined) ? 'var(--green)' : 'var(--gold)';
 
   const upperFloorNums = [2, 3, 4];
   if (floorTenants[5] || (floorOperations && floorOperations[5])) upperFloorNums.push(5);
@@ -1018,11 +1100,17 @@ function renderSettTab(){
     const t = floorTenants[f];
     const name = t ? (t.biz || t.name) : (f === 5 ? '5층 (공실/관리)' : `${f}층 세입자`);
     const unit = t ? t.unit : `${f}01호`;
+    const prevInfo = getPreviousWaterMeterInfo(f, key);
     const prev = (si.waterFloors?.[f]?.prevMeter !== undefined && si.waterFloors[f].prevMeter !== '')
       ? si.waterFloors[f].prevMeter
-      : getPreviousWaterMeter(f, key);
+      : prevInfo.val;
     const cur = si.waterFloors?.[f]?.curMeter ?? '';
     const usage = si.waterFloors?.[f]?.usage ?? '';
+    const prevSourceText = (prev !== '' && prev !== null && prev !== undefined)
+      ? (prevInfo.sourceLabel ? `✓ ${prevInfo.sourceLabel} 반영` : `✓ 이전 수치 자동 입력됨`)
+      : `⚠️ ${prevDateLabel} 사진 수치 입력 필요`;
+    const prevColor = (prev !== '' && prev !== null && prev !== undefined) ? 'var(--green)' : 'var(--gold)';
+
     return `
       <div style="background:var(--surface);border-radius:10px;padding:10px 12px;border:1px solid var(--border);margin-top:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -1035,16 +1123,19 @@ function renderSettTab(){
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
           <div>
-            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">직전 검침 (자동)</label>
-            <input type="number" step="any" id="sett-water-prev-${f}" value="${esc(prev)}" oninput="calcWaterFloorUsage(${f})" placeholder="직전" style="font-size:11px;padding:6px 8px;">
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">직전 검침 <strong>(${prevDateLabel} 사진)</strong></label>
+            <input type="number" step="any" id="sett-water-prev-${f}" value="${esc(prev)}" oninput="calcWaterFloorUsage(${f})" placeholder="${prevDateLabel} 수치" style="font-size:11px;padding:6px 8px;">
+            <span style="font-size:9px;color:${prevColor};display:block;margin-top:2px;">${prevSourceText}</span>
           </div>
           <div>
-            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">이번 검침 (입력)</label>
-            <input type="number" step="any" id="sett-water-cur-${f}" value="${esc(cur)}" oninput="calcWaterFloorUsage(${f})" placeholder="이번" style="font-size:11px;padding:6px 8px;">
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">이번 검침 <strong>(${curDateLabel} 사진)</strong></label>
+            <input type="number" step="any" id="sett-water-cur-${f}" value="${esc(cur)}" oninput="calcWaterFloorUsage(${f})" placeholder="${curDateLabel} 수치" style="font-size:11px;padding:6px 8px;">
+            <span style="font-size:9px;color:var(--text3);display:block;margin-top:2px;">${curDateLabel} 세입자 사진</span>
           </div>
           <div>
-            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">사용량(톤, 수정가능)</label>
+            <label style="font-size:10px;color:var(--text2);margin-bottom:3px;display:block;">사용량(2달분)</label>
             <input type="number" step="any" id="sett-water-usage-${f}" value="${esc(usage)}" oninput="updateWaterCalculations()" placeholder="자동/직접" style="font-size:11px;padding:6px 8px;font-weight:700;color:var(--text);">
+            <span style="font-size:9px;color:var(--text3);display:block;margin-top:2px;">이번 - 직전 (톤)</span>
           </div>
         </div>
       </div>`;
@@ -1094,6 +1185,15 @@ function renderSettTab(){
           </label>
         </div>
         <div id="sett-water-fields" style="display:${waterActive?'block':'none'};">
+          <div style="margin-bottom:12px;padding:10px 14px;border-radius:8px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);font-size:12px;line-height:1.6;">
+            <div style="font-weight:700;color:var(--gold);margin-bottom:3px;display:flex;align-items:center;gap:6px;">
+              <span>💧</span> <span>${cM}월 수도 정산 안내 (${waterPeriodSummary})</span>
+            </div>
+            <div style="color:var(--text2);">
+              세입자가 <strong>${prevDateLabel}</strong>과 <strong>${curDateLabel}</strong>에 찍어 보낸 계량기 사진 수치를 각 층에 입력해 주세요.<br>
+              <span style="font-size:11px;color:var(--text3);">• 계산 공식: [${curDateLabel} 이번 검침] - [${prevDateLabel} 직전 검침] = 2개월 실사용량(톤)</span>
+            </div>
+          </div>
           <div class="field-row">
             <div class="field"><label>총 청구금액 (원)</label><input type="number" id="sett-water-total" placeholder="예: 300,000" value="${esc(si.waterTotal||'')}" oninput="updateWaterCalculations()"></div>
             <div class="field"><label>건물 총 사용량(톤)</label><input type="number" step="any" id="sett-water-usage" placeholder="예: 100" value="${esc(si.waterUsage||'')}" oninput="updateWaterCalculations()"></div>
@@ -1112,16 +1212,19 @@ function renderSettTab(){
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
               <div>
-                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">직전 검침 (자동)</label>
-                <input type="number" step="any" id="sett-water-prev-1" value="${esc(f1Prev)}" oninput="calcWaterFloorUsage(1)" placeholder="직전 수치" style="font-size:12px;padding:8px;">
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">직전 검침 <strong>(${prevDateLabel} 사진)</strong></label>
+                <input type="number" step="any" id="sett-water-prev-1" value="${esc(f1Prev)}" oninput="calcWaterFloorUsage(1)" placeholder="${prevDateLabel} 수치" style="font-size:12px;padding:8px;">
+                <span style="font-size:10px;color:${f1PrevColor};display:block;margin-top:2px;">${f1PrevSourceText}</span>
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">이번 검침 (입력)</label>
-                <input type="number" step="any" id="sett-water-cur-1" value="${esc(f1Cur)}" oninput="calcWaterFloorUsage(1)" placeholder="이번 수치" style="font-size:12px;padding:8px;">
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">이번 검침 <strong>(${curDateLabel} 사진)</strong></label>
+                <input type="number" step="any" id="sett-water-cur-1" value="${esc(f1Cur)}" oninput="calcWaterFloorUsage(1)" placeholder="${curDateLabel} 수치" style="font-size:12px;padding:8px;">
+                <span style="font-size:10px;color:var(--text3);display:block;margin-top:2px;">${curDateLabel} 세입자 사진</span>
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">1층 사용량(톤)</label>
+                <label style="font-size:11px;color:var(--text2);margin-bottom:4px;display:block;">1층 사용량(2달분)</label>
                 <input type="number" step="any" id="sett-water-usage-1" value="${esc(f1Usage)}" oninput="updateWaterCalculations()" placeholder="자동/직접" style="font-size:12px;padding:8px;font-weight:700;color:var(--gold);">
+                <span style="font-size:10px;color:var(--text3);display:block;margin-top:2px;">이번 - 직전 (톤)</span>
               </div>
             </div>
           </div>
@@ -1151,9 +1254,25 @@ function renderSettTab(){
             </div>
           </div>
         </div>
-        <div id="sett-water-off" style="display:${waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:4px 0;">
-          <div>이번 달 수도요금 청구 없음 (${waterRecText})</div>
-          <div style="margin-top:6px;"><button type="button" onclick="enableWaterFieldsManually()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--gold);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">+ 이번 달 수도요금 예외 입력하기</button></div>
+        <div id="sett-water-off" style="display:${waterActive?'none':'block'};font-size:12px;color:var(--text2);padding:10px 14px;background:var(--surface2);border-radius:10px;border:1px solid var(--border2);margin-top:8px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <span style="font-size:20px;line-height:1;">💡</span>
+            <div style="flex:1;">
+              <div style="font-weight:700;color:var(--text);font-size:13px;margin-bottom:4px;">이번 달(${cM}월)은 수도요금 미부과월입니다 (격월 정산)</div>
+              <div style="color:var(--text2);font-size:12px;line-height:1.6;">
+                수도요금은 <strong>2개월 사용분</strong> 단위로 홀수달에 정산됩니다.<br>
+                세입자가 <strong>${evenPrevWaterMonth}/20</strong>과 <strong>${evenCurWaterMonth}/20</strong>에 찍어 보낸 계량기 사진은 <strong>${nextSettMonth}월 정산</strong>에서 입력 및 청구됩니다.
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" onclick="jumpToSettlementMonth(${nextSettYear},${nextSettMonth})" style="background:var(--gold);color:#0a0a0a;border:none;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:4px;">
+                  👉 ${nextSettMonth}월 정산으로 바로 이동하기
+                </button>
+                <button type="button" onclick="enableWaterFieldsManually()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text2);padding:7px 12px;border-radius:7px;font-size:11px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">
+                  + 이번 달(${cM}월)에 예외로 수도 입력하기
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -1431,7 +1550,12 @@ async function confirmSettlement() {
         const wf = settlementReview.inputs.waterFloors[row.floor];
         if (wf.curMeter !== '' && wf.curMeter != null) {
           bill.waterMeter = Number(wf.curMeter);
-          bill.waterMeterDate = `${String(cM).padStart(2,'0')}/20`;
+          let meterDate = `${String(cM).padStart(2,'0')}/20`;
+          if (settlementReview.usagePeriods?.water?.end) {
+            const parts = settlementReview.usagePeriods.water.end.split('-');
+            if (parts.length === 3) meterDate = `${parts[1]}/${parts[2]}`;
+          }
+          bill.waterMeterDate = meterDate;
           tenant.waterHistory = [...(tenant.waterHistory||[]).filter(w => w.mk !== key), {mk: key, date: bill.waterMeterDate, val: bill.waterMeter}].sort((a,b)=>a.mk.localeCompare(b.mk));
         }
       }
@@ -1596,9 +1720,21 @@ async function saveTenant(){
   const deposit=document.getElementById('inp-deposit').value.trim();
   if(deposit!=='')d.deposit=Number(deposit);
   if(!RentalCore.LEASE_STATUSES.includes(d.leaseStatus)){showToast('임대상태를 선택해주세요.');return;}
-  if(d.payday&&!RentalBilling.dueDate(d,'pay_rent',cY,cM)){showToast('월세 지급일은 1~31일 또는 말일로 입력해주세요.');return;}
-  for(const field of ['period_mgmt','period_rent','period_elec','period_elev','period_waste','period_water_day'])
-    if(d[field]&&(!Number.isInteger(Number(d[field]))||Number(d[field])<1||Number(d[field])>31)){showToast('사용기간 기준일은 1~31일로 입력해주세요.');return;}
+  if(d.payday&&!RentalBilling.dueDate(d,'pay_rent',cY,cM)){
+    showToast('월세 지급일은 1~31일 또는 말일로 입력해주세요.');
+    const el=document.getElementById('inp-payday');
+    if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+    return;
+  }
+  for(const field of ['period_mgmt','period_rent','period_elec','period_elev','period_waste','period_water_day']) {
+    if(d[field]&&(!Number.isInteger(Number(d[field]))||Number(d[field])<1||Number(d[field])>31)){
+      showToast('사용기간 기준일은 1~31일로 입력해주세요.');
+      const idMap={period_mgmt:'inp-pm',period_rent:'inp-pr',period_elec:'inp-pe',period_elev:'inp-pev',period_waste:'inp-pw',period_water_day:'inp-wd'};
+      const el=document.getElementById(idMap[field]);
+      if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+      return;
+    }
+  }
   if(editTenantId){
     const previous=tenants.find(t=>t.id===editTenantId);if(!previous)return;
     if(renewalEdit){
@@ -1864,67 +2000,175 @@ function renderHistContent() {
   const state=RentalBilling.payment(tenant,bill);
   const stamp=(type,label)=>{
     const group=state.groups[type],amount=group.total;
-    const flag=type==='rent'?'stampedRent':'stampedMgmt';
-    return `<div class="payment-card ${group.complete?'is-paid':''}"><div class="payment-heading"><span>${label}</span><span class="status-tag">${group.exempt?'미부과':group.complete?'완납':group.received>0?'일부 확인':'미확인'}</span></div><strong>${fmt(amount)}</strong><div class="payment-date">${group.dates.length?esc(group.dates.join(' · ')):'입금 날짜를 지정해주세요'}</div><button class="btn btn-secondary" onclick="stampBill('${type}')">${bill[flag]?'완납 날짜 변경':'날짜 지정 · 완납 처리'}</button></div>`;
-  };
-  const rows=PAY_ITEMS.map(item=>{
-    const info=state.items[item.key];
-    return `<div class="charge-row"><span>${item.label}</span><small class="${info.paid?'paid-text':''}">${info.na?'미부과':info.paid?esc(info.date)+' 확인':'입금 미확인'}</small><strong>${fmt(info.na?0:info.amount)}</strong></div>`;
-  }).join('');
-  const bt=billTenant(tenant,bill);
-  const taxInfo=bt.bizNo?`<span style="font-size:11px;color:var(--text3);margin-left:6px;">사업자번호: ${esc(bt.bizNo)}</span>`:'';
-  con.innerHTML=`<article class="card bill-document"><div class="bill-heading"><div><span class="eyebrow">MONTHLY STATEMENT</span><h2>${histY}년 ${histM}월 고지서</h2><p>${esc(bt.biz||bt.name)} · ${esc(bill.unitSnapshot??tenant.unit)} ${taxInfo}</p></div><div class="bill-grand"><small>총 청구액</small><strong>${fmt(state.total)}</strong></div></div>
-    ${bill.snapshotEstimated?.length?'<p class="data-warning">과거 원본에 없는 계약·금액 정보 일부를 현재 정보로 보완했습니다. 과거 청구서와 대조가 필요합니다.</p>':''}
-    <div class="bill-summary-bar bill-balance">
-      <div class="bill-sum-item total"><div class="sum-label">총 청구액</div><div class="sum-val">${fmt(state.total)}</div></div>
-      <div class="bill-sum-item received"><div class="sum-label">입금 확인액</div><div class="sum-val" style="color:var(--green);">${fmt(state.received)}</div></div>
-      <div class="bill-sum-item unpaid"><div class="sum-label">미확인 잔액</div><div class="sum-val" style="color:${state.unpaid>0?'var(--red)':'var(--text2)'};">${fmt(state.unpaid)}</div></div>
-    </div>
-    <div class="charge-list">${rows}</div>
-    <details class="mgmt-detail"><summary>고정 관리비 세부 항목</summary>${buildMgmtBreakdownHtml(billTenant(tenant,bill))}</details>
-    <div class="payment-grid">${stamp('rent','월세')}${stamp('mgmt','관리비·공과금')}</div>
-    <p class="card-sub">관리비 도장은 고정 관리비와 전기·수도·엘리베이터·오물비 전체를 완납 처리합니다. 항목별 입금 확인은 고지서 수정에서 관리할 수 있습니다.</p>
-    <label class="invoice-check"><input type="checkbox" ${bill.invoiceIssued?'checked':''} onchange="setInvoiceIssued(this.checked)"> 세금계산서 발급 완료 · 안내 메시지에 반영</label>
-    <div class="bill-actions bill-actions-modern"><button class="btn-kakao-primary" onclick="previewKakao()">💬 카카오톡 / 문자 청구서 발송</button><button class="btn btn-secondary" onclick="editThisMonth()">✏️ 고지서 수정</button><button class="btn btn-secondary" onclick="printCurrentBill()">🖨️ 인쇄 / PDF</button></div>
-    ${(bill.audit||[]).length?`<details class="audit-details"><summary>변경 이력 ${(bill.audit||[]).length}건</summary>${[...bill.audit].reverse().map(entry=>`<p><time>${esc(new Date(entry.at).toLocaleString('ko-KR'))}</time> ${esc(entry.action)} · ${esc(entry.detail)}</p>`).join('')}</details>`:''}
-    </article>`;
-}
-function editThisMonth(){const t=findTenant(selTenantId);if(!t)return;document.getElementById('hist-content').innerHTML=buildBillFormHtml(t,histY,histM);applyBillDraft();}
+      const flag=type==='rent'?'stampedRent':'stampedMgmt';
+      return `<div class="payment-card ${group.complete?'is-paid':''}"><div class="payment-heading"><span>${label}</span><span class="status-tag">${group.exempt?'미부과':group.complete?'완납':group.received>0?'일부 확인':'미확인'}</span></div><strong>${fmt(amount)}</strong><div class="payment-date">${group.dates.length?esc(group.dates.join(' · ')):'입금 날짜를 지정해주세요'}</div><button class="btn btn-secondary" onclick="stampBill('${type}')">${bill[flag]?'완납 날짜 변경':'날짜 지정 · 완납 처리'}</button></div>`;
+    };
+    const subStamp=(itemKey,label)=>{
+      const info=state.items[itemKey];
+      if(!info||info.na)return '';
+      const isPaid=Boolean(info.paid);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface2);border-radius:8px;border:1px solid ${isPaid?'rgba(76,175,125,.35)':'var(--border2)'};">
+        <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+          <span style="font-size:12px;font-weight:700;color:${isPaid?'var(--green)':'var(--text)'};white-space:nowrap;">${label}</span>
+          <span style="font-size:11.5px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;">${fmt(info.amount)}</span>
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${isPaid?'rgba(76,175,125,.15)':'rgba(235,87,87,.1)'};color:${isPaid?'var(--green)':'var(--red)'};font-weight:700;white-space:nowrap;">${isPaid?'✓ 완납':'미확인'}</span>
+          ${isPaid&&info.date?`<span style="font-size:10.5px;color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap;">(${esc(info.date)})</span>`:''}
+        </div>
+        <button type="button" class="btn" onclick="stampBill('${itemKey}')" style="padding:4px 9px;font-size:11px;background:${isPaid?'var(--surface)':'var(--goldbg2)'};color:${isPaid?'var(--text2)':'var(--gold)'};border:1px solid ${isPaid?'var(--border2)':'var(--gold)'};border-radius:6px;cursor:pointer;white-space:nowrap;">
+          ${isPaid?'날짜 변경':'완납 처리'}
+        </button>
+      </div>`;
+    };
+    const rows=PAY_ITEMS.map(item=>{
+      const info=state.items[item.key];
+      return `<div class="charge-row"><span>${item.label}</span><small class="${info.paid?'paid-text':''}">${info.na?'미부과':info.paid?esc(info.date)+' 확인':'입금 미확인'}</small><strong>${fmt(info.na?0:info.amount)}</strong></div>`;
+    }).join('');
+    const bt=billTenant(tenant,bill);
+    const taxInfo=bt.bizNo?`<span style="font-size:11px;color:var(--text3);margin-left:6px;">사업자번호: ${esc(bt.bizNo)}</span>`:'';
+    con.innerHTML=`<article class="card bill-document"><div class="bill-heading"><div><span class="eyebrow">MONTHLY STATEMENT</span><h2>${histY}년 ${histM}월 고지서</h2><p>${esc(bt.biz||bt.name)} · ${esc(bill.unitSnapshot??tenant.unit)} ${taxInfo}</p></div><div class="bill-grand"><small>총 청구액</small><strong>${fmt(state.total)}</strong></div></div>
+      ${bill.snapshotEstimated?.length?'<p class="data-warning">과거 원본에 없는 계약·금액 정보 일부를 현재 정보로 보완했습니다. 과거 청구서와 대조가 필요합니다.</p>':''}
+      <div class="bill-summary-bar bill-balance">
+        <div class="bill-sum-item total"><div class="sum-label">총 청구액</div><div class="sum-val">${fmt(state.total)}</div></div>
+        <div class="bill-sum-item received"><div class="sum-label">입금 확인액</div><div class="sum-val" style="color:var(--green);">${fmt(state.received)}</div></div>
+        <div class="bill-sum-item unpaid"><div class="sum-label">미확인 잔액</div><div class="sum-val" style="color:${state.unpaid>0?'var(--red)':'var(--text2)'};">${fmt(state.unpaid)}</div></div>
+      </div>
+      <div class="charge-list">${rows}</div>
+      <details class="mgmt-detail"><summary>고정 관리비 세부 항목</summary>${buildMgmtBreakdownHtml(billTenant(tenant,bill))}</details>
+      <div class="payment-grid">${stamp('rent','월세')}${stamp('mgmt','관리비 전체 (일괄 완납)')}</div>
 
-/* 완납 도장 (rent=월세, mgmt=관리비) */
-let stampTarget = null;
-function stampBill(type) {
-  if(!['rent','mgmt'].includes(type)||!selTenantId)return;
-  const month=`${histY}-${String(histM).padStart(2,'0')}`;
-  const bill=bills[month]?.[selTenantId]||{};
-  const flag=type==='rent'?'stampedRent':'stampedMgmt';
-  stampTarget={type,month,id:selTenantId};
-  document.getElementById('stamp-title').textContent=(type==='rent'?'월세':'관리비·공과금')+' 완납 날짜';
-  const now=new Date();
-  const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  document.getElementById('stamp-date').value=RentalBilling.dateISO(bill[flag+'Date'],histY)||today;
-  document.getElementById('stamp-remove').hidden=!(bill[flag]||RentalBilling.payment(findTenant(selTenantId),bill).groups[type].received);
-  openModal('modal-stamp');
-}
-async function saveStamp(remove=false) {
-  if(!stampTarget)return;
-  const date=RentalBilling.dateISO(document.getElementById('stamp-date').value);
-  if(!remove&&(!date||date>localToday())){showToast('올바른 완납 날짜를 지정해주세요.');return;}
-  const {type,month,id}=stampTarget;
-  const tenant=findTenant(id,month);if(!tenant)return;
-  bills[month]??={}; const bill=bills[month][id]??={};
-  snapshotBill(tenant,bill,month);
-  const flag=type==='rent'?'stampedRent':'stampedMgmt';
-  const before=bill[flag+'Date']||'미지정';
-  bill[flag]=!remove;
-  if(remove){
-    delete bill[flag+'Date'];
-    for(const itemKey of RentalBilling.itemKeys.filter(k=>(k==='pay_rent')===(type==='rent')))if(bill.paid?.[itemKey])delete bill.paid[itemKey].date;
-  }else bill[flag+'Date']=date.replaceAll('-','.');
-  addBillAudit(bill,(type==='rent'?'월세':'관리비·공과금')+(remove?' 완납 취소':' 완납 날짜 저장'),remove?before:`${before} → ${date}`);
-  if(!await save())return;
-  closeModal('modal-stamp');renderAll();renderHistChips();renderHistContent();showToast(remove?'완납 처리를 취소했습니다.':'완납 날짜를 저장했습니다.');
-}
+      <div style="margin-top:14px;padding:12px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border2);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;flex-wrap:wrap;gap:4px;">
+          <strong style="font-size:12.5px;color:var(--gold);display:flex;align-items:center;gap:5px;">
+            <span>⚡</span> 관리비 항목별 분할·부분 완납
+          </strong>
+          <span style="font-size:11px;color:var(--text3);">세입자가 고정비나 일부만 먼저 보낸 경우 개별 완납 처리</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:7px;">
+          ${subStamp('pay_mgmt', '기본 관리비')}
+          ${subStamp('pay_elec', '공용전기세')}
+          ${subStamp('pay_elev', '승강기 유지비')}
+          ${subStamp('pay_water', '수도요금')}
+        </div>
+      </div>
+
+      <p class="card-sub" style="margin-top:10px;">관리비 전체 도장은 관리비·전기·수도·엘리베이터 전체를 완납 처리합니다. 세입자가 일부 항목만 입금한 경우 위의 항목별 분할 완납을 이용해 주세요.</p>
+      <label class="invoice-check"><input type="checkbox" ${bill.invoiceIssued?'checked':''} onchange="setInvoiceIssued(this.checked)"> 세금계산서 발급 완료 · 안내 메시지에 반영</label>
+      <div class="bill-actions bill-actions-modern"><button class="btn-kakao-primary" onclick="previewKakao()">💬 카카오톡 / 문자 청구서 발송</button><button class="btn btn-secondary" onclick="editThisMonth()">✏️ 고지서 수정</button><button class="btn btn-secondary" onclick="printCurrentBill()">🖨️ 인쇄 / PDF</button></div>
+      ${(bill.audit||[]).length?`<details class="audit-details"><summary>변경 이력 ${(bill.audit||[]).length}건</summary>${[...bill.audit].reverse().map(entry=>`<p><time>${esc(new Date(entry.at).toLocaleString('ko-KR'))}</time> ${esc(entry.action)} · ${esc(entry.detail)}</p>`).join('')}</details>`:''}
+      </article>`;
+  }
+  function editThisMonth(){const t=findTenant(selTenantId);if(!t)return;document.getElementById('hist-content').innerHTML=buildBillFormHtml(t,histY,histM);applyBillDraft();}
+
+  /* 완납 도장 (rent=월세, mgmt=관리비 일괄, pay_*=개별 항목 완납) */
+  let stampTarget = null;
+  const STAMP_TYPE_LABELS = {
+    rent: '월세',
+    mgmt: '관리비 전체(일괄)',
+    pay_rent: '월세',
+    pay_mgmt: '기본 관리비',
+    pay_elec: '공용전기세',
+    pay_elev: '승강기 유지비',
+    pay_water: '수도요금',
+    pay_waste: '오물처리비'
+  };
+
+  function stampBill(type) {
+    if(!selTenantId)return;
+    const validTypes = ['rent','mgmt','pay_rent','pay_mgmt','pay_elec','pay_elev','pay_water','pay_waste'];
+    if(!validTypes.includes(type))return;
+    const month=`${histY}-${String(histM).padStart(2,'0')}`;
+    const bill=bills[month]?.[selTenantId]||{};
+    const tenant=findTenant(selTenantId,month);
+    stampTarget={type,month,id:selTenantId};
+
+    const label=STAMP_TYPE_LABELS[type]||'항목';
+    document.getElementById('stamp-title').textContent=`${label} 완납 날짜`;
+
+    const now=new Date();
+    const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+    let currentDate = '';
+    let hasPaid = false;
+    if(type==='rent') {
+      currentDate = bill.stampedRentDate || bill.paid?.pay_rent?.date;
+      hasPaid = Boolean(bill.stampedRent || bill.paid?.pay_rent?.date);
+    } else if(type==='mgmt') {
+      currentDate = bill.stampedMgmtDate;
+      hasPaid = Boolean(bill.stampedMgmt || (tenant && RentalBilling.payment(tenant,bill).groups.mgmt.received));
+    } else {
+      currentDate = bill.paid?.[type]?.date;
+      hasPaid = Boolean(currentDate);
+    }
+
+    document.getElementById('stamp-date').value=RentalBilling.dateISO(currentDate,histY)||today;
+    document.getElementById('stamp-remove').hidden=!hasPaid;
+    openModal('modal-stamp');
+  }
+
+  async function saveStamp(remove=false) {
+    if(!stampTarget)return;
+    const date=RentalBilling.dateISO(document.getElementById('stamp-date').value);
+    if(!remove&&(!date||date>localToday())){showToast('올바른 완납 날짜를 지정해주세요.');return;}
+    const {type,month,id}=stampTarget;
+    const tenant=findTenant(id,month);if(!tenant)return;
+    bills[month]??={}; const bill=bills[month][id]??={};
+    snapshotBill(tenant,bill,month);
+
+    const formattedDate = date ? date.replaceAll('-','.') : '';
+    const label = STAMP_TYPE_LABELS[type] || '항목';
+
+    if(type==='rent'||type==='pay_rent') {
+      const before=bill.stampedRentDate||'미지정';
+      bill.stampedRent=!remove;
+      bill.paid??={};
+      if(remove){
+        delete bill.stampedRentDate;
+        if(bill.paid.pay_rent) delete bill.paid.pay_rent.date;
+      } else {
+        bill.stampedRentDate=formattedDate;
+        bill.paid.pay_rent={...bill.paid.pay_rent,date:formattedDate};
+      }
+      addBillAudit(bill,'월세'+(remove?' 완납 취소':' 완납 날짜 저장'),remove?before:`${before} → ${date}`);
+    } else if(type==='mgmt') {
+      const before=bill.stampedMgmtDate||'미지정';
+      bill.stampedMgmt=!remove;
+      bill.paid??={};
+      const mgmtKeys=RentalBilling.itemKeys.filter(k=>k!=='pay_rent');
+      if(remove){
+        delete bill.stampedMgmtDate;
+        mgmtKeys.forEach(k=>{ if(bill.paid[k]) delete bill.paid[k].date; });
+      } else {
+        bill.stampedMgmtDate=formattedDate;
+        mgmtKeys.forEach(k=>{ bill.paid[k]={...bill.paid[k],date:formattedDate}; });
+      }
+      addBillAudit(bill,'관리비 전체(일괄)'+(remove?' 완납 취소':' 완납 날짜 저장'),remove?before:`${before} → ${date}`);
+    } else {
+      // 개별 세부 항목 (pay_mgmt, pay_elec, pay_elev, pay_water, pay_waste)
+      RentalBilling.materializeGroup(tenant,bill,type);
+      bill.paid??={};
+      const before=bill.paid[type]?.date||'미지정';
+      if(remove){
+        if(bill.paid[type]) delete bill.paid[type].date;
+      } else {
+        bill.paid[type]={...bill.paid[type],date:formattedDate};
+      }
+
+      // 관리비 전체 항목들이 모두 완납되었는지 검사하여 stampedMgmt 플래그 동기화
+      const payState=RentalBilling.payment(tenant,bill);
+      if(payState.groups.mgmt.complete){
+        bill.stampedMgmt=true;
+        bill.stampedMgmtDate=formattedDate;
+      } else {
+        bill.stampedMgmt=false;
+        delete bill.stampedMgmtDate;
+      }
+      addBillAudit(bill,label+(remove?' 완납 취소':' 완납 날짜 저장'),remove?before:`${before} → ${date}`);
+    }
+
+    if(!await save())return;
+    closeModal('modal-stamp');renderAll();renderHistChips();renderHistContent();
+    showToast(remove?`${label} 완납 처리를 취소했습니다.`:`${label} 완납 날짜를 저장했습니다. ✓`);
+  }
 function addAudit(target,action,detail,changes) {
   const entry={at:new Date().toISOString(),action,detail};
   if(changes)entry.changes=changes;
@@ -1951,6 +2195,7 @@ function buildBillFormHtml(t,year,month){
   if(awh.length>=2){const us=[];for(let i=1;i<awh.length;i++){const diff=awh[i].val-awh[i-1].val;const[py,pm]=awh[i-1].mk.split('-').map(Number);const[cy,cm]=awh[i].mk.split('-').map(Number);const md=(cy-py)*12+(cm-pm);if(md>0&&diff>=0)us.push(diff/md*2);}if(us.length)avg2m=Math.round(us.reduce((s,v)=>s+v,0)/us.length*10)/10;}
   const wHist=wh.length?wh.map((w,i)=>`<div class="water-hist-item"><span>${esc(w.date)} · <strong>${fmtN(w.val)}</strong></span><div style="display:flex;align-items:center;gap:6px;">${i>0?`<span style="color:var(--green);font-weight:700;">+${fmtN(w.val-wh[i-1].val)} 톤</span>`:'<span style="color:var(--text3);">기준</span>'}<button onclick="deleteWaterMeter('${w.mk}')" style="background:var(--redbg);border:1px solid rgba(192,57,43,.3);color:var(--red);padding:2px 7px;border-radius:5px;font-size:10px;cursor:pointer;">삭제</button></div></div>`).join(''):`<div style="font-size:12px;color:var(--text3);padding:4px 0;">이력 없음</div>`;
   const wasteNA=b.wasteNA===true;const elevV=RentalBilling.charges(t,b).pay_elev;
+  const defaultWaterDate=(um % 2 === 1)?`${String(um===1?12:um-1).padStart(2,'0')}/20`:`${String(um).padStart(2,'0')}/20`;
   return`<div class="card">
     <div class="card-header"><div><div class="card-title">${esc(t.biz||t.name)} · ${esc(t.unit)}</div><div class="card-sub">${uy}년 ${um}월 고지서</div></div></div>
     <div class="section-label">💧 수도계량기 이력</div>
@@ -1958,7 +2203,7 @@ function buildBillFormHtml(t,year,month){
     <div class="water-row" style="margin-top:8px;">
       <input type="number" id="bill-water-meter" placeholder="이번 달 수치" value="${esc(b.waterMeter??'')}">
       <input type="text" id="bill-water-date" placeholder="계량일 MM/DD"
-        value="${esc(b.waterMeterDate||String(um).padStart(2,'0')+'/20')}"
+        value="${esc(b.waterMeterDate||defaultWaterDate)}"
         style="width:90px;padding:10px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;text-align:center;flex-shrink:0;">
       <button onclick="saveWaterMeter()" style="background:var(--gold);border:none;color:#0a0a0a;padding:9px 13px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">기록</button>
     </div>
@@ -2204,7 +2449,8 @@ function renderPayChecks(t,b,y,m){
 /* 카카오 메시지 */
 async function previewKakao(){
   if(document.getElementById('bill-total-display')){if(!validateNumbers('hist-content'))return;if(!captureBillDraft())return;if(!await save())return;clearBillDraft();}
-  let t=findTenant(selTenantId);if(!t)return;
+  let t=findTenant(selTenantId);
+  if(!t)return;
   const uy=activeY(),um=activeM();const key=`${uy}-${String(um).padStart(2,'0')}`;
   const b=(bills[key]||{})[t.id]||{};const mm=String(um).padStart(2,'0');
   t = billTenant(t, b);
@@ -2277,20 +2523,91 @@ async function previewKakao(){
   const rentItem=paymentState.items.pay_rent,mgmtItem=paymentState.items.pay_mgmt,elecItem=paymentState.items.pay_elec,elevItem=paymentState.items.pay_elev;
   const waterItem=waterState.items.pay_water;
   const isRentPaid=rentItem.paid,isMgmtPaid=mgmtItem.paid,isElecPaid=elecItem.paid,isElevPaid=elevItem.paid,isWaterPaid=waterItem.paid;
-  const rentStatus=paymentLabel(rentItem),mgmtStatus=paymentLabel(mgmtItem),elecStatus=paymentLabel(elecItem),elevStatus=paymentLabel(elevItem),waterStatus=paymentLabel(waterItem);
 
-  // 입금 확인일
+  // 입금 확인일 추출 (개별 항목 및 묶음 완납일 고려)
   const rentPaidDate = b.paid?.pay_rent?.date || (b.stampedRentDate ? b.stampedRentDate : '');
   const mgmtPaidDate = b.paid?.pay_mgmt?.date || (b.stampedMgmtDate ? b.stampedMgmtDate : '');
+  const elecPaidDate = b.paid?.pay_elec?.date || (b.stampedMgmtDate ? b.stampedMgmtDate : '');
+  const elevPaidDate = b.paid?.pay_elev?.date || (b.stampedMgmtDate ? b.stampedMgmtDate : '');
+  const waterPaidDate = wb.paid?.pay_water?.date || b.paid?.pay_water?.date || (b.stampedMgmtDate ? b.stampedMgmtDate : '');
 
-  // 요청 금액 계산
+  // 상태 레이블 및 입금 확인 문구
+  const rentStatus = rentItem.paid ? `완납${rentPaidDate ? ` · ${rentPaidDate} 입금 확인` : ''}` : paymentLabel(rentItem);
+  const mgmtStatus = mgmtItem.paid ? `완납${mgmtPaidDate ? ` · ${mgmtPaidDate} 입금 확인` : ''}` : paymentLabel(mgmtItem);
+  const elecStatus = elecItem.paid ? `완납${elecPaidDate ? ` · ${elecPaidDate} 입금 확인` : ''}` : paymentLabel(elecItem);
+  const elevStatus = elevItem.paid ? `완납${elevPaidDate ? ` · ${elevPaidDate} 입금 확인` : ''}` : paymentLabel(elevItem);
+  const waterStatus = waterItem.paid ? `완납${waterPaidDate ? ` · ${waterPaidDate} 입금 확인` : ''}` : paymentLabel(waterItem);
+
+  // 요청 금액 및 미납/완납 항목 수집
   let totalDue = 0;
+  const paidItems = [];
   const unpaidItems = [];
-  if (!rentItem.paid&&!rentItem.na&&rentItem.amount>0) { totalDue += rentItem.amount; unpaidItems.push(`${um}월 월세 ${fmtN(rentItem.amount)}원`); }
-  if (!mgmtItem.paid&&!mgmtItem.na&&mgmtItem.amount>0) { totalDue += mgmtItem.amount; unpaidItems.push(`${um}월 관리비 ${fmtN(mgmtItem.amount)}원`); }
-  if (!elecItem.paid&&!elecItem.na&&elecItem.amount>0) { totalDue += elecItem.amount; unpaidItems.push(`${um}월 공용전기료 ${fmtN(elecItem.amount)}원`); }
-  if (!elevItem.paid&&!elevItem.na&&elevItem.amount>0) { totalDue += elevItem.amount; unpaidItems.push(`${um}월 승강기 유지관리보수비 ${fmtN(elevItem.amount)}원`); }
-  if (!waterItem.paid&&!waterItem.na&&waterItem.amount>0) { totalDue += waterItem.amount; unpaidItems.push(`${waterTargetM}월 수도요금 ${fmtN(waterItem.amount)}원`); }
+
+  if (!rentItem.na && rentItem.amount > 0) {
+    if (rentItem.paid) paidItems.push({ name: '월세', date: rentPaidDate, amount: rentItem.amount });
+    else { totalDue += rentItem.amount; unpaidItems.push({ name: `${um}월 월세`, amount: rentItem.amount }); }
+  }
+  if (!mgmtItem.na && mgmtItem.amount > 0) {
+    if (mgmtItem.paid) paidItems.push({ name: '기본 관리비', date: mgmtPaidDate, amount: mgmtItem.amount });
+    else { totalDue += mgmtItem.amount; unpaidItems.push({ name: '기본 관리비', amount: mgmtItem.amount }); }
+  }
+  if (!elecItem.na && elecItem.amount > 0) {
+    if (elecItem.paid) paidItems.push({ name: '공용전기', date: elecPaidDate, amount: elecItem.amount });
+    else { totalDue += elecItem.amount; unpaidItems.push({ name: '공용전기료', amount: elecItem.amount }); }
+  }
+  if (!elevItem.na && elevItem.amount > 0) {
+    if (elevItem.paid) paidItems.push({ name: '승강기 유지비', date: elevPaidDate, amount: elevItem.amount });
+    else { totalDue += elevItem.amount; unpaidItems.push({ name: '승강기 유지관리비', amount: elevItem.amount }); }
+  }
+  if (!waterItem.na && waterItem.amount > 0) {
+    if (waterItem.paid) paidItems.push({ name: '수도요금', date: waterPaidDate, amount: waterItem.amount });
+    else { totalDue += waterItem.amount; unpaidItems.push({ name: `${waterTargetM}월 수도요금`, amount: waterItem.amount }); }
+  }
+
+  // 날짜 자연스러운 한국어 표기 변환: "2026.04.07" -> "4월 7일"
+  function formatNaturalDate(dStr) {
+    if (!dStr) return '';
+    const parts = dStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/);
+    if (parts.length >= 3) {
+      const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+      if (y !== uy) return `${y}년 ${m}월 ${d}일`;
+      return `${m}월 ${d}일`;
+    }
+    return dStr;
+  }
+
+  let noticeMessage = '';
+  if (totalDue === 0) {
+    noticeMessage = '전액 입금 확인되었습니다. 감사합니다.';
+  } else if (paidItems.length > 0) {
+    // 부분 완납 상태: 입금 확인된 내역과 추가 입금 요청 안내
+    const paidDates = paidItems.map(p => formatNaturalDate(p.date)).filter(Boolean);
+    const uniqueDates = [...new Set(paidDates)];
+    const paidNames = paidItems.map(p => p.name).join(' 및 ');
+    let paidText = '';
+
+    if (uniqueDates.length === 1 && uniqueDates[0]) {
+      paidText = `${paidNames}는 ${uniqueDates[0]} 입금 확인되었습니다.`;
+    } else if (uniqueDates.length > 1) {
+      const details = paidItems.map(p => p.date ? `${p.name}(${formatNaturalDate(p.date)})` : p.name).join(' · ');
+      paidText = `${details} 입금 확인되었습니다.`;
+    } else {
+      paidText = `${paidNames}는 입금 확인되었습니다.`;
+    }
+
+    let unpaidText = '';
+    if (unpaidItems.length === 1 && unpaidItems[0].name.includes('수도')) {
+      unpaidText = `수도요금 정산분 ${fmtN(totalDue)}원만 추가 입금 부탁드립니다.`;
+    } else {
+      const unpaidNames = unpaidItems.map(u => u.name).join(' 및 ');
+      unpaidText = `${unpaidNames} ${fmtN(totalDue)}원만 추가 입금 부탁드립니다.`;
+    }
+    noticeMessage = `${paidText} ${unpaidText}`;
+  } else {
+    // 전부 미납
+    const unpaidSummary = unpaidItems.map(u => `${u.name} ${fmtN(u.amount)}원`).join(', ');
+    noticeMessage = `기존 미입금된 ${unpaidSummary || '청구 내역'} 확인 후 입금 부탁드립니다.`;
+  }
 
   // 재계약 기간
   const rp = calcRenewPeriod(t.contract);
@@ -2344,35 +2661,108 @@ async function previewKakao(){
 
   const extraTotal = mgmtTotal + elecTotal + elevTotal;
 
-  const msg = `[알림] ${uy}년 ${um}월 관리내역 및 납부 현황 안내
+  const kakaoVars = {
+    '상호': t.biz || t.name,
+    '대표자': t.name,
+    '이름': t.name,
+    '호수': t.unit,
+    '청구월': String(um),
+    '청구연도': String(uy),
+    '월세': `${fmtN(rentTotal)}원`,
+    '월세상태': rentStatus,
+    '월세상태_간략': rentItem.paid ? `완납${rentPaidDate ? ` (${rentPaidDate} 입금 확인)` : ''}` : rentStatus,
+    '월세기간': rentPeriod,
+    '관리비': `${fmtN(mgmtTotal)}원`,
+    '관리비상태': mgmtStatus,
+    '관리비상태_간략': mgmtItem.paid ? `완납${mgmtPaidDate ? ` (${mgmtPaidDate} 입금 확인)` : ''}` : mgmtStatus,
+    '관리비공급가': fmtN(mgmtNet),
+    '관리비부가세': fmtN(mgmtVat),
+    '관리비세부항목': mgmtLines,
+    '공용전기료': `${fmtN(elecTotal)}원`,
+    '공용전기료상태': elecStatus,
+    '전기기간': elecPeriod,
+    '전기공급가': fmtN(elecNet),
+    '전기부가세': fmtN(elecVat),
+    '승강기유지비': `${fmtN(elevTotal)}원`,
+    '승강기유지비상태': elevStatus,
+    '승강기산정방식': elevBreakdown,
+    '관리비외합계': `${fmtN(extraTotal)}원`,
+    '관리비외상태': mgmtStatus,
+    '수도요금': waterAmt > 0 ? `${fmtN(waterAmt)}원 (${waterStatus})` : '정산 예정 / 미부과',
+    '수도상태': waterStatus,
+    '수도정산월': String(waterTargetM),
+    '수도정산기간': waterPeriodMap[waterTargetM] || '',
+    '다음수도정산월': String(nextWaterM),
+    '다음수도정산기간': waterPeriodMap[nextWaterM] || '',
+    '수도정산내역': waterBlocks,
+    '총입금액': `${fmtN(totalDue)}원`,
+    '입금기한': `${t.payday ? t.payday : '해당 월 말일'}까지`,
+    '세금계산서발급일': `${ny}/${String(nm).padStart(2, '0')}/10까지`,
+    '미납안내': noticeMessage,
+    '계약상태': RentalCore.leaseStatus(t),
+    '최초계약기간': t.contract_first || '',
+    '현재계약기간': t.contract || '',
+    '재계약협의기간': rp ? rp.str : '',
+    '월세납입일': String(pd),
+    '지급방식': t.paytype || '후불납',
+    '재계약단위': t.renew || '1년 단위 재계약'
+  };
 
-안녕하세요, [${t.biz || t.name}/${t.name}] 사장님.
+  currentKakaoVars = kakaoVars;
+  activeKakaoTenantId = t.id;
+
+  kakaoCache = {
+    simple: renderKakaoFromTemplate(getKakaoTemplate('simple'), kakaoVars),
+    detail: renderKakaoFromTemplate(getKakaoTemplate('detail'), kakaoVars)
+  };
+
+  const wrap = document.getElementById('kakao-msg-wrap');
+  if (wrap) {
+    wrap.innerHTML = `<div class="kakao-box" id="kakao-text" contenteditable="true" oninput="updateKakaoCount()" style="white-space:pre-wrap;outline:none;cursor:text;min-height:260px;max-height:420px;overflow-y:auto;border:1px solid var(--border2);padding:14px;border-radius:8px;background:var(--surface2);font-family:'DM Mono','Noto Sans KR',sans-serif;font-size:12.5px;line-height:1.7;"></div>`;
+  }
+  toggleKakaoTemplateEditor(false);
+  switchKakaoTab(currentKakaoTab || 'simple');
+  updateKakaoCustomBadge();
+  openModal('modal-receipt');
+}
+
+const KAKAO_TEMPLATE_STORAGE_KEY = 'rentalApp.kakaoTemplate.v2';
+let kakaoCache = { simple: '', detail: '' };
+let currentKakaoTab = 'simple';
+let activeKakaoTenantId = null;
+let currentKakaoVars = null;
+
+function getDefaultKakaoTemplate(tab) {
+  if (tab === 'detail') {
+    return `[알림] {청구연도}년 {청구월}월 관리내역 및 납부 현황 안내
+
+안녕하세요, [{상호}/{대표자}] 사장님.
 
 ■ 간략 납부 현황
 
-${um}월 월세 (${rentPeriod})
-: ${fmtN(rentTotal)}원 ${rentStatus}
+{청구월}월 월세 ({월세기간})
+: {월세} {월세상태_간략}
 
-${um}월 관리비 (${rentPeriod})
-: ${fmtN(mgmtTotal)}원 ${mgmtStatus}
-(공급가액 ${fmtN(mgmtNet)}원 + 부가세 ${fmtN(mgmtVat)}원)
+{청구월}월 관리비 ({월세기간})
+: {관리비} {관리비상태_간략}
+(공급가액 {관리비공급가}원 + 부가세 {관리비부가세}원)
 
-${um}월 공용전기료 (${elecPeriod})
-: ${fmtN(elecTotal)}원 ${elecStatus}
-(공급가액 ${fmtN(elecNet)}원 + 부가세 ${fmtN(elecVat)}원)
+{청구월}월 공용전기료 ({전기기간})
+: {공용전기료} {공용전기료상태}
+(공급가액 {전기공급가}원 + 부가세 {전기부가세}원)
 
-${um}월 승강기 유지관리보수비 (${rentPeriod})
-: ${fmtN(elevTotal)}원 ${elevStatus}
+{청구월}월 승강기 유지관리보수비 ({월세기간})
+: {승강기유지비} {승강기유지비상태}
 (고지서 실제 청구액 기준)
 
-${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
-: ${fmtN(waterAmt)}원 ${waterStatus}
+{수도정산월}월 수도요금 ({수도정산기간})
+: {수도요금} {수도상태}
 
-현재 입금 요청금액 : ${fmtN(totalDue)}원
+현재 입금 요청금액 : {총입금액}
 
-※ ${nextWaterM}월 수도요금 (${waterPeriodMap[nextWaterM] || ''})은 정산 예정으로, 이번 입금 요청금액에 포함되지 않습니다.
+※ {다음수도정산월}월 수도요금 ({다음수도정산기간})은 정산 예정으로, 이번 입금 요청금액에 포함되지 않습니다.
 
-전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정이며, 관리내역 및 납부 현황 확인을 위해 카카오톡으로 먼저 고지드립니다.
+전자세금계산서는 {세금계산서발급일} 발급 예정이며, 관리내역 및 납부 현황 확인을 위해 카카오톡으로 먼저 고지드립니다.
 
 납부금액은 상단에 간략히 정리하였으며, 필요하신 경우 하단의 상세 내용을 확인해 주시기 바랍니다.
 
@@ -2380,18 +2770,18 @@ ${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
 
 ■ 계약 현황
 
-현재 계약 상태 : ${RentalCore.leaseStatus(t)}
+현재 계약 상태 : {계약상태}
 
-최초 계약 기간 : ${t.contract_first || ''}
-현재 계약 기간 : ${t.contract || ''}
-재계약 협의 예정 기간 : ${rp ? rp.str : ''}
+최초 계약 기간 : {최초계약기간}
+현재 계약 기간 : {현재계약기간}
+재계약 협의 예정 기간 : {재계약협의기간}
 
 납입 기준일
-- 월세 : 매월 ${pd}일
+- 월세 : 매월 {월세납입일}일
 - 관리비 : 매월 말일 (관리인 고지 후)
 
-※ ${t.paytype || '후불납'}
-※ ${t.renew || '1년 단위 재계약'}
+※ {지급방식}
+※ {재계약단위}
 
 ---
 
@@ -2416,63 +2806,63 @@ ${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
 
 ---
 
-${waterBlocks}
+{수도정산내역}
 
 ---
 
-■ ${um}월 월세
+■ {청구월}월 월세
 
-산정 기간 : ${rentPeriod}
+산정 기간 : {월세기간}
 
-월세 : ${fmtN(rentTotal)}원
-상태 : ${rentStatus}${rentPaidDate ? ` (${rentPaidDate} 입금 확인)` : ''}
-
----
-
-■ ${um}월 관리비
-
-산정 기간 : ${rentPeriod}
-
-공급가액 : ${fmtN(mgmtNet)}원
-부가세 : ${fmtN(mgmtVat)}원
-합계 : ${fmtN(mgmtTotal)}원
-${mgmtLines}
-
-상태 : ${mgmtStatus}
+월세 : {월세}
+상태 : {월세상태_간략}
 
 ---
 
-■ ${um}월 별도 부과항목
+■ {청구월}월 관리비
+
+산정 기간 : {월세기간}
+
+공급가액 : {관리비공급가}원
+부가세 : {관리비부가세}원
+합계 : {관리비}
+{관리비세부항목}
+
+상태 : {관리비상태_간략}
+
+---
+
+■ {청구월}월 별도 부과항목
 
 [공용전기료]
 
-산정 기간 : ${elecPeriod}
+산정 기간 : {전기기간}
 
-공급가액 : ${fmtN(elecNet)}원
-부가세 : ${fmtN(elecVat)}원
-합계 : ${fmtN(elecTotal)}원
-상태 : ${elecStatus}
+공급가액 : {전기공급가}원
+부가세 : {전기부가세}원
+합계 : {공용전기료}
+상태 : {공용전기료상태}
 
 ---
 
 [승강기 유지관리보수비]
 
-산정 기간 : ${rentPeriod}
+산정 기간 : {월세기간}
 
-합계 : ${fmtN(elevTotal)}원
-산정 방식 : ${elevBreakdown}
-상태 : ${elevStatus}
+합계 : {승강기유지비}
+산정 방식 : {승강기산정방식}
+상태 : {승강기유지비상태}
 
 ---
 
-■ ${um}월 관리비 및 별도 부과항목 합계
+■ {청구월}월 관리비 및 별도 부과항목 합계
 
-관리비 : ${fmtN(mgmtTotal)}원
-공용전기료 : ${fmtN(elecTotal)}원
-승강기 유지관리보수비 : ${fmtN(elevTotal)}원
+관리비 : {관리비}
+공용전기료 : {공용전기료}
+승강기 유지관리보수비 : {승강기유지비}
 
-합계 : ${fmtN(extraTotal)}원
-상태 : ${mgmtStatus}${mgmtPaidDate ? ` (${mgmtPaidDate} 입금 확인)` : ''}
+합계 : {관리비외합계}
+상태 : {관리비외상태}
 
 ※ 미운영 항목은 현재 관리비에 포함되어 있지 않으며 비용을 부과하지 않습니다.
 
@@ -2482,69 +2872,99 @@ ${mgmtLines}
 
 ■ 현재 납부 현황
 
-${um}월 월세 (${rentPeriod})
-: ${fmtN(rentTotal)}원 ${rentStatus}
+{청구월}월 월세 ({월세기간})
+: {월세} {월세상태_간략}
 
-${um}월 관리비 (${rentPeriod})
-: ${fmtN(mgmtTotal)}원 ${mgmtStatus}
-(공급가액 ${fmtN(mgmtNet)}원 + 부가세 ${fmtN(mgmtVat)}원)
+{청구월}월 관리비 ({월세기간})
+: {관리비} {관리비상태_간략}
+(공급가액 {관리비공급가}원 + 부가세 {관리비부가세}원)
 
-${um}월 공용전기료 (${elecPeriod})
-: ${fmtN(elecTotal)}원 ${elecStatus}
-(공급가액 ${fmtN(elecNet)}원 + 부가세 ${fmtN(elecVat)}원)
+{청구월}월 공용전기료 ({전기기간})
+: {공용전기료} {공용전기료상태}
+(공급가액 {전기공급가}원 + 부가세 {전기부가세}원)
 
-${um}월 승강기 유지관리보수비 (${rentPeriod})
-: ${fmtN(elevTotal)}원 ${elevStatus}
-(${elevBreakdown})
+{청구월}월 승강기 유지관리보수비 ({월세기간})
+: {승강기유지비} {승강기유지비상태}
+({승강기산정방식})
 
-${waterTargetM}월 수도요금 (${waterPeriodMap[waterTargetM] || ''})
-: ${fmtN(waterAmt)}원 ${waterStatus}
+{수도정산월}월 수도요금 ({수도정산기간})
+: {수도요금} {수도상태}
 
-${nextWaterM}월 수도요금 (${waterPeriodMap[nextWaterM] || ''})
+{다음수도정산월}월 수도요금 ({다음수도정산기간})
 : 정산 예정 / 이번 입금 요청금액에 미포함
 
-현재 입금 요청금액 : ${fmtN(totalDue)}원
+현재 입금 요청금액 : {총입금액}
 
-전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정입니다.
+전자세금계산서는 {세금계산서발급일} 발급 예정입니다.
 
-${totalDue > 0 ? `기존 미입금된 ${unpaidItems.join(', ')} 확인 후 입금 부탁드립니다.` : '전액 입금 확인되었습니다. 감사합니다.'}
+{미납안내}
 
 감사합니다.
 
 다인빌딩 관리인`;
+  }
 
-  const simpleMsg = `[${t.biz || t.name} ${um}월 임대료 및 관리비 청구 안내]
+  return `[{상호} {청구월}월 임대료 및 관리비 청구 안내]
 
-안녕하세요, ${t.biz || t.name}(${t.unit}) 대표님.
-다인빌딩 관리인입니다. ${um}월분 청구 내역 안내드립니다.
+안녕하세요, {상호}({호수}) 대표님.
+다인빌딩 관리인입니다. {청구월}월분 청구 내역 안내드립니다.
 
-- 월세: ${fmtN(rentTotal)}원 (${rentStatus}${rentPaidDate ? ` · ${rentPaidDate} 입금 확인` : ''})
-- 관리비: ${fmtN(mgmtTotal)}원 (${mgmtStatus}${mgmtPaidDate ? ` · ${mgmtPaidDate} 입금 확인` : ''})
-- 공용전기료: ${fmtN(elecTotal)}원 (${elecStatus})
-- 승강기 유지비: ${fmtN(elevTotal)}원 (${elevStatus})
-- 수도요금: ${waterAmt > 0 ? fmtN(waterAmt) + '원 (' + waterStatus + ')' : '정산 예정 / 미부과'}
+- 월세: {월세} ({월세상태})
+- 관리비: {관리비} ({관리비상태})
+- 공용전기료: {공용전기료} ({공용전기료상태})
+- 승강기 유지비: {승강기유지비} ({승강기유지비상태})
+- 수도요금: {수도요금}
 ------------------------------------
-▶ 총 입금 요청금액: ${fmtN(totalDue)}원
-▶ 입금 기한: ${t.payday ? t.payday : '해당 월 말일'}까지
+▶ 총 입금 요청금액: {총입금액}
+▶ 입금 기한: {입금기한}
 ▶ 입금 계좌: [다인빌딩 관리 계좌] (입금 시 상호명 표기 부탁드립니다)
 
-※ 전자세금계산서는 ${ny}/${String(nm).padStart(2, '0')}/10까지 발급 예정입니다.
-${totalDue > 0 ? `기존 미입금된 ${unpaidItems.join(', ')} 확인 후 입금 부탁드립니다.` : '전액 입금 확인되었습니다. 감사합니다.'}
+※ 전자세금계산서는 {세금계산서발급일} 발급 예정입니다.
+{미납안내}
 
 감사합니다.
 다인빌딩 관리인`;
-
-  kakaoCache = { simple: simpleMsg, detail: msg };
-  const wrap = document.getElementById('kakao-msg-wrap');
-  if (wrap) {
-    wrap.innerHTML = `<div class="kakao-box" id="kakao-text" contenteditable="true" oninput="updateKakaoCount()" style="white-space:pre-wrap;outline:none;cursor:text;min-height:260px;max-height:420px;overflow-y:auto;border:1px solid var(--border2);padding:14px;border-radius:8px;background:var(--surface2);font-family:'DM Mono','Noto Sans KR',sans-serif;font-size:12.5px;line-height:1.7;"></div>`;
-  }
-  switchKakaoTab(currentKakaoTab || 'simple');
-  openModal('modal-receipt');
 }
 
-let kakaoCache = { simple: '', detail: '' };
-let currentKakaoTab = 'simple';
+function loadKakaoTemplates() {
+  try {
+    const raw = localStorage.getItem(KAKAO_TEMPLATE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveKakaoTemplates(templates) {
+  try {
+    localStorage.setItem(KAKAO_TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+  } catch (e) {
+    console.error('Failed to save kakao template:', e);
+  }
+}
+
+function getKakaoTemplate(tab) {
+  const custom = loadKakaoTemplates()[tab];
+  return (custom && custom.trim()) ? custom : getDefaultKakaoTemplate(tab);
+}
+
+function isKakaoTemplateCustomized(tab) {
+  const custom = loadKakaoTemplates()[tab];
+  return Boolean(custom && custom.trim() && custom !== getDefaultKakaoTemplate(tab));
+}
+
+function renderKakaoFromTemplate(template, vars) {
+  if (!template) return '';
+  return template.replace(/\{([^{}]+)\}/g, (match, key) => {
+    const trimmed = key.trim();
+    if (Object.prototype.hasOwnProperty.call(vars, trimmed)) {
+      return vars[trimmed];
+    }
+    return match;
+  });
+}
 
 function switchKakaoTab(tab) {
   currentKakaoTab = tab;
@@ -2563,13 +2983,18 @@ function switchKakaoTab(tab) {
     el.innerText = kakaoCache[tab] || '';
     updateKakaoCount();
   }
+  const ta = document.getElementById('kakao-template-textarea');
+  if (ta) {
+    ta.value = getKakaoTemplate(tab);
+  }
+  updateKakaoCustomBadge();
 }
 
 function updateKakaoCount() {
   const el = document.getElementById('kakao-text');
   const countEl = document.getElementById('kakao-char-count');
   if (el && countEl) {
-    countEl.textContent = `${el.innerText.length}자`;
+    countEl.textContent = `${(el.innerText || '').length}자`;
   }
 }
 
@@ -2577,6 +3002,92 @@ async function copyKakao() {
   const el = document.getElementById('kakao-text'); if (!el) return;
   try { await navigator.clipboard.writeText(el.innerText); showToast('복사됐어요! 카카오톡에 붙여넣기 📋'); }
   catch { showToast('자동 복사를 사용할 수 없습니다. 메시지 내용을 선택해서 복사해주세요.'); }
+}
+
+function toggleKakaoTemplateEditor(forceState) {
+  const editPanel = document.getElementById('kakao-edit-panel');
+  const viewPanel = document.getElementById('kakao-view-panel');
+  const toggleBtn = document.getElementById('btn-kakao-toggle-edit');
+  if (!editPanel || !viewPanel) return;
+
+  const willShow = typeof forceState === 'boolean' ? forceState : (editPanel.style.display === 'none' || !editPanel.style.display);
+  if (willShow) {
+    const ta = document.getElementById('kakao-template-textarea');
+    if (ta) ta.value = getKakaoTemplate(currentKakaoTab);
+    editPanel.style.display = 'block';
+    viewPanel.style.display = 'none';
+    if (toggleBtn) {
+      toggleBtn.innerHTML = '👁️ 미리보기 보기';
+      toggleBtn.style.color = 'var(--text)';
+    }
+  } else {
+    editPanel.style.display = 'none';
+    viewPanel.style.display = 'block';
+    if (toggleBtn) {
+      toggleBtn.innerHTML = '✏️ 양식 수정·저장';
+      toggleBtn.style.color = 'var(--gold)';
+    }
+    updateKakaoCount();
+  }
+}
+
+function insertKakaoTag(tag) {
+  const ta = document.getElementById('kakao-template-textarea');
+  if (!ta) return;
+  const start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  const end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+  const val = ta.value;
+  ta.value = val.substring(0, start) + tag + val.substring(end);
+  ta.focus();
+  const nextPos = start + tag.length;
+  ta.setSelectionRange(nextPos, nextPos);
+}
+
+function saveCustomKakaoTemplate() {
+  const ta = document.getElementById('kakao-template-textarea');
+  if (!ta) return;
+  const newTemplate = ta.value;
+  const templates = loadKakaoTemplates();
+  templates[currentKakaoTab] = newTemplate;
+  saveKakaoTemplates(templates);
+
+  if (currentKakaoVars) {
+    kakaoCache[currentKakaoTab] = renderKakaoFromTemplate(newTemplate, currentKakaoVars);
+    const el = document.getElementById('kakao-text');
+    if (el) el.innerText = kakaoCache[currentKakaoTab];
+  }
+  toggleKakaoTemplateEditor(false);
+  updateKakaoCustomBadge();
+  if (typeof showToast === 'function') {
+    showToast('양식이 영구 저장되었습니다! 다른 달과 세입자에게도 자동 적용됩니다. 💾');
+  }
+}
+
+function resetCustomKakaoTemplate() {
+  if (typeof confirm === 'function' && !confirm('이 탭의 양식을 기본 양식으로 되돌리시겠습니까?')) return;
+  const templates = loadKakaoTemplates();
+  delete templates[currentKakaoTab];
+  saveKakaoTemplates(templates);
+
+  const defaultTpl = getDefaultKakaoTemplate(currentKakaoTab);
+  const ta = document.getElementById('kakao-template-textarea');
+  if (ta) ta.value = defaultTpl;
+
+  if (currentKakaoVars) {
+    kakaoCache[currentKakaoTab] = renderKakaoFromTemplate(defaultTpl, currentKakaoVars);
+    const el = document.getElementById('kakao-text');
+    if (el) el.innerText = kakaoCache[currentKakaoTab];
+  }
+  updateKakaoCustomBadge();
+  if (typeof showToast === 'function') {
+    showToast('기본 양식으로 복원되었습니다. 🔄');
+  }
+}
+
+function updateKakaoCustomBadge() {
+  const badge = document.getElementById('kakao-custom-badge');
+  if (!badge) return;
+  badge.style.display = isKakaoTemplateCustomized(currentKakaoTab) ? 'inline-block' : 'none';
 }
 
 /* ════════════════════════════════════════
