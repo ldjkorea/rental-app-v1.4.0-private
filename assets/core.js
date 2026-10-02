@@ -16,7 +16,9 @@
     && !['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty'].includes(value);
   const month = value => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
   function number(value, label, integer = false) {
-    if (!['number', 'string'].includes(typeof value) || !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 1e12 || (integer && !Number.isSafeInteger(Number(value))))
+    const raw = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+    const n = Number(raw);
+    if (!['number', 'string'].includes(typeof value) || !Number.isFinite(n) || n < 0 || n > 1e12 || (integer && !Number.isSafeInteger(n)))
       fail(`${label}: 0 이상의 유효한 숫자가 필요합니다.`);
   }
   function date(value, year) {
@@ -82,7 +84,10 @@
     data.tenants.forEach(t => {
       flags(t, ['archived'], '세입자');
       if (t.leaseStatus !== undefined && !LEASE_STATUSES.includes(t.leaseStatus)) fail('임대상태를 확인해주세요.');
-      if (t.deposit != null && t.deposit !== '') number(t.deposit, '보증금', true);
+      if (t.deposit != null && t.deposit !== '') {
+        if (typeof t.deposit === 'string') t.deposit = Number(t.deposit.replace(/,/g, '').trim());
+        number(t.deposit, '보증금', true);
+      }
       if (t.audit != null) validateAudit(t.audit);
       if (typeof t.unit !== 'string') fail('세입자 호수를 확인해주세요.');
       for (const key of ['biz', 'contract', 'contract_first', 'payday', 'renew', 'paytype', 'bizNo', 'repName', 'email']) {

@@ -1717,8 +1717,17 @@ async function saveTenant(){
     period_water_day:document.getElementById('inp-wd').value,
     period_water_odd:document.getElementById('inp-wo').value,
   };
-  const deposit=document.getElementById('inp-deposit').value.trim();
-  if(deposit!=='')d.deposit=Number(deposit);
+  const depositRaw=document.getElementById('inp-deposit').value.trim();
+  if(depositRaw!==''){
+    const depositNum=Number(depositRaw.replace(/,/g,''));
+    if(!Number.isFinite(depositNum)||depositNum<0||!Number.isSafeInteger(depositNum)){
+      showToast('보증금은 0 이상의 정수로 입력해주세요.');
+      const el=document.getElementById('inp-deposit');
+      if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+      return;
+    }
+    d.deposit=depositNum;
+  }
   if(!RentalCore.LEASE_STATUSES.includes(d.leaseStatus)){showToast('임대상태를 선택해주세요.');return;}
   if(d.payday&&!RentalBilling.dueDate(d,'pay_rent',cY,cM)){
     showToast('월세 지급일은 1~31일 또는 말일로 입력해주세요.');
@@ -3491,7 +3500,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('cloud-enabled').disabled=isDemo;
   document.getElementById('demo-banner').hidden=!isDemo;
   switchTab('home');
-  if(storageFault)showDataNotice('저장된 데이터를 읽지 못했습니다. 원본은 보존했습니다. 백업 파일로 복원하거나 손상 원본을 내보내주세요.');
+  if(storageFault){
+    const reason=storageFault?.message?` (${storageFault.message})`:'';
+    showDataNotice(`저장된 데이터를 읽지 못했습니다${reason}. 원본은 보존했습니다. 백업 파일로 복원하거나 손상 원본을 내보내주세요.`);
+  }
   updateLiveDate();
   setInterval(updateLiveDate, 60000);
   setTimeout(checkBackgroundCloudSync, 1000);
