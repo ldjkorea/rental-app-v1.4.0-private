@@ -92,3 +92,25 @@ test('meter dates respect month lengths and leap years', () => {
   assert.equal(core.validMeterDate('02/29', 2024), true);
   for (const date of ['02/29', '04/31', '13/01', '00/10', '9/0', 'x']) assert.equal(core.validMeterDate(date, 2026), false);
 });
+test('mgmt items with custom or duplicate keys auto-heal and do not crash load', () => {
+  const data = fixture();
+  data.tenants[0].mgmtItems = [
+    {key: 'm1', amount: '50,000', status: 'active'},
+    {key: 'm1', amount: 30000, status: 'active'},
+    {key: 'm99', amount: -500, status: 'unknown_status'},
+    {key: '', amount: 'invalid', name: 123}
+  ];
+  const validated = core.validateData(data);
+  const items = validated.tenants[0].mgmtItems;
+  assert.equal(items.length, 4);
+  assert.equal(items[0].key, 'm1');
+  assert.equal(items[0].amount, 50000);
+  assert.equal(items[1].key, 'm1_1');
+  assert.equal(items[1].amount, 30000);
+  assert.equal(items[2].key, 'm99');
+  assert.equal(items[2].amount, 0);
+  assert.equal(items[2].status, 'inactive');
+  assert.equal(items[3].key, 'm4');
+  assert.equal(items[3].amount, 0);
+  assert.equal(items[3].name, '123');
+});

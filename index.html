@@ -1379,15 +1379,31 @@ a {color:var(--gold);}
     });
   }
   function validateMgmtItems(items) {
-    if (!Array.isArray(items)) fail('관리비 항목이 올바르지 않습니다.');
+    if (!Array.isArray(items)) return;
     const seen = new Set();
-    items.forEach(item => {
-      record(item, '관리비 항목');
-      if (!/^m([1-9]|1[0-9])$/.test(item.key) || seen.has(item.key)) fail('관리비 항목 키를 확인해주세요.');
-      seen.add(item.key);
-      if (item.amount != null) number(item.amount, '관리비', true);
-      if (item.name != null && typeof item.name !== 'string') fail('관리비 이름을 확인해주세요.');
-      if (item.status != null && !['active', 'actual', 'na', 'inactive'].includes(item.status)) fail('관리비 상태를 확인해주세요.');
+    items.forEach((item, idx) => {
+      if (!isObject(item)) return;
+      let key = typeof item.key === 'string' ? item.key.trim() : '';
+      if (!key) {
+        key = `m${idx + 1}`;
+      }
+      if (seen.has(key)) {
+        let suffix = 1;
+        while (seen.has(`${key}_${suffix}`)) {
+          suffix++;
+        }
+        key = `${key}_${suffix}`;
+      }
+      item.key = key;
+      seen.add(key);
+      if (item.amount != null && item.amount !== '') {
+        let n = typeof item.amount === 'string' ? Number(item.amount.replace(/,/g, '').trim()) : Number(item.amount);
+        if (!Number.isFinite(n) || n < 0) n = 0;
+        item.amount = Math.round(n);
+        number(item.amount, '관리비', true);
+      }
+      if (item.name != null && typeof item.name !== 'string') item.name = String(item.name);
+      if (item.status != null && !['active', 'actual', 'na', 'inactive'].includes(item.status)) item.status = 'inactive';
     });
   }
   function validateAudit(entries) {
